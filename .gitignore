@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Logs
+*.log
+
+# Conversation history (personal data)
+scripts/.conversation_history.json
+
+# Claude Code internal state
+scripts/.claude/worktrees/
+
+# macOS
+.DS_Store

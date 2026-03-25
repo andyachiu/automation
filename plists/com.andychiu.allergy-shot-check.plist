@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Label: unique identifier for this job -->
+    <key>Label</key>
+    <string>com.andychiu.allergy-shot-check</string>
+
+    <!-- The script to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/check_allergy_shot.sh</string>
+    </array>
+
+    <!-- Schedule: Monday (1), Wednesday (3), Friday (5) at 9:00 AM -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>9</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/allergy_shot_check.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/allergy_shot_check.log</string>
+
+    <!-- Environment (ensure claude CLI is on PATH) -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/andychiu/.npm-global/bin</string>
+    </dict>
+</dict>
+</plist>

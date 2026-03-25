@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Conversation history
+.conversation_history.json
+
+# Log files (written to $HOME, not repo, but ignore if accidentally created here)
+*.log
