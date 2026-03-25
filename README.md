@@ -34,6 +34,6 @@ launchctl load ~/Library/LaunchAgents/com.andychiu.automation.evening-brief.plis
 
 | Agent | Schedule | What it does |
 |-------|----------|--------------|
-| `deploy` | 7 AM weekdays | `git pull` + `uv sync` |
-| `morning-brief` | 8 AM weekdays | Today's events + urgent emails |
+| `deploy` | 6 AM weekdays | `git pull` + `uv sync` |
+| `morning-brief` | 7 AM weekdays | Today's events + urgent emails |
 | `evening-brief` | 9 PM daily | Tomorrow's events + pending replies |
