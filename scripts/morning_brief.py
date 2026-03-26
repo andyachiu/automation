@@ -23,7 +23,7 @@ IMESSAGE_TARGET = os.environ.get("IMESSAGE_TARGET", "")
 GCAL_TOKEN = os.environ.get("GCAL_TOKEN", "")
 GMAIL_TOKEN = os.environ.get("GMAIL_TOKEN", "")
 MAX_MESSAGE_CHARS = 1200
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-haiku-4-5-20251001"
 
 # ── Weather ───────────────────────────────────────────────────────────────────
 
@@ -73,8 +73,8 @@ def build_user_prompt(weather: str) -> str:
 
     steps.append(
         f"{n}. List only today's events ({today_iso}, midnight to 11:59 PM local time; "
-        "time + title; flag anything back-to-back or needing prep). "
-        "Also identify the first event of the day. Do not include events from other days."
+        "format each as 'TIME — TITLE'; flag anything back-to-back or needing prep in the title. "
+        "Do not include events from other days."
     )
     n += 1
 
@@ -87,17 +87,19 @@ def build_user_prompt(weather: str) -> str:
 
     if is_weekend():
         steps.append(
-            f"{n}. Check the 20 most recent unread emails in my inbox. "
-            "Flag urgent ones: directly to you in To:, from a real person, urgent language, received today."
+            f"{n}. Check the 20 most recent emails. Separate into two groups:\n"
+            "   URGENT: directly addressed to you in To:, from a real person, time-sensitive language, received today.\n"
+            "   HIGHLIGHTS: notable non-urgent items — substantive newsletters, shipping/order updates, anything worth knowing. Skip promos and automated noise."
         )
     else:
         steps.append(
-            f"{n}. Check the 50 most recent unread emails in my inbox only (not sent, not search). "
-            "Flag urgent ones meeting all of these criteria:\n"
-            "   - Addressed directly to you in the To: field (not CC or mailing list)\n"
-            "   - From a real person (not automated sender, newsletter, or notification)\n"
-            "   - Contains time-sensitive language: urgent, asap, today, deadline, reply, action required\n"
-            "   - Received in the last 24 hours and still unanswered"
+            f"{n}. Check the 50 most recent unread emails in my inbox (not sent, not search). Separate into two groups:\n"
+            "   URGENT: all must be true — directly addressed in To: (not CC/mailing list), "
+            "from a real person (not newsletter or automated sender), "
+            "time-sensitive language (urgent, asap, today, deadline, reply, action required), "
+            "received in the last 24 hours and unanswered.\n"
+            "   HIGHLIGHTS: notable non-urgent items — substantive newsletters (VC/tech digests, news), "
+            "shipping/order updates, anything worth a quick note. Skip promos and automated noise."
         )
     n += 1
 
@@ -120,19 +122,21 @@ def build_user_prompt(weather: str) -> str:
     # JSON schema
     json_fields = [
         '  "summary": one-line overview (e.g. "3 meetings, 1 urgent email")',
-        '  "first_meeting": time and title of the first event today, or empty string if no events (e.g. "9:30 AM: Standup")',
-        '  "events": list of strings, one per event (e.g. ["9 AM: Standup", "2 PM: 1:1 (prep needed)"])',
-        '  "urgent_emails": list of strings, one per urgent email (empty list if none)',
-        '  "focus": one sentence, the #1 priority',
+        '  "events": list of strings formatted as "TIME — TITLE" (e.g. ["9:00 AM — Standup", "2:00 PM — 1:1 (prep needed)"]); empty list if no events',
+        '  "urgent_emails": list of strings formatted as "Sender: one-line summary" for urgent emails only; empty list if none',
+        '  "email_highlights": list of strings formatted as "Sender: one-line summary" for notable non-urgent emails; empty list if nothing worth noting',
+        '  "focus": one sentence, the #1 priority for today',
     ]
     if allergy_day:
         json_fields.append(
-            '  "allergy_shot_reminder": "No allergy shot in next 30 days — schedule one" if none found, else empty string'
+            '  "allergy_shot": "Next shot: [Weekday Mon DD]" or "Next shot: [Weekday Mon DD] at [location]" '
+            'only if a location is actually set in the event; '
+            'or "No allergy shot in next 30 days — book one at Stanford MyHealth" if none found'
         )
     if is_monday():
-        json_fields.append('  "week_preview": list of strings for Mon-Fri key events (Monday only)')
+        json_fields.append('  "week_preview": list of strings formatted as "DAY — EVENT" for Mon-Fri key events (Monday only)')
     if is_friday():
-        json_fields.append('  "week_kickoff": list of strings — first Monday meeting + key upcoming events (Friday only)')
+        json_fields.append('  "week_kickoff": list of strings formatted as "DAY — EVENT" for key upcoming events (Friday only)')
 
     steps_text = "\n".join(steps)
     fields_text = "\n".join(json_fields)
@@ -153,7 +157,8 @@ Return only valid JSON, no other text.
 
 SYSTEM_PROMPT = """\
 You are a concise personal assistant writing a morning briefing delivered as an iMessage.
-Return only a valid JSON object — no markdown, no preamble, no explanation, no surrounding text.
+Return only a valid JSON object. Do not include any text before or after the JSON object — \
+no preamble, no explanation, no markdown, no code fences.
 Be terse and factual. All string values must be plain text (no asterisks, no bullet symbols).
 Use exactly the number of tool calls specified — no more. Fetch all data first, then compose \
 your response entirely from what you retrieved.
@@ -207,11 +212,9 @@ def _try_append(lines: list[str], candidate: list[str]) -> bool:
 
 
 def format_briefing(raw: str, weather: str) -> str:
-    """Parse JSON briefing and format as plain text. Falls back to raw text."""
-    header_parts = [datetime.now().strftime("%a %b %-d")]
-    if weather:
-        header_parts.append(weather)
-    header = " | ".join(header_parts)
+    """Parse JSON briefing and format as plain text with emoji sections. Falls back to raw text."""
+    date_str = datetime.now().strftime("%a %b %-d")
+    header = f"☀️ {date_str} | {weather}" if weather else f"☀️ {date_str}"
 
     try:
         data = json.loads(raw)
@@ -229,46 +232,62 @@ def format_briefing(raw: str, weather: str) -> str:
             log.warning("Response was not valid JSON, using raw text")
             return f"{header}\n\n{raw}"
 
-    # Build message in priority order — stop adding sections when space runs out
-    lines: list[str] = [header, data.get("summary", "")]
+    lines: list[str] = [header]
 
-    # First meeting — prominent single line, high priority
-    first_meeting = data.get("first_meeting", "")
-    if first_meeting:
-        _try_append(lines, ["", f"First: {first_meeting}"])
-
-    # Today's events
+    # Schedule
     events = data.get("events", [])
-    if events:
-        if not _try_append(lines, [""] + events):
-            # Add as many individual events as fit
-            lines.append("")
-            for event in events:
-                if not _try_append(lines, [event]):
-                    break
+    sched = ["", "📅 SCHEDULE"]
+    sched += [f"• {e}" for e in events] if events else ["Nothing on the calendar today — enjoy the open day!"]
+    if not _try_append(lines, sched):
+        _try_append(lines, ["", "📅 SCHEDULE"])
+        for e in events:
+            if not _try_append(lines, [f"• {e}"]):
+                break
 
-    # Urgent emails
+    # Urgent emails — only shown if present
     urgent = data.get("urgent_emails", [])
     if urgent:
-        if not _try_append(lines, ["", "Emails:"] + urgent):
-            if _try_append(lines, ["", "Emails:"]):
-                for item in urgent:
-                    if not _try_append(lines, [item]):
+        urgent_sec = ["", "🚨 URGENT"] + [f"• {e}" for e in urgent]
+        if not _try_append(lines, urgent_sec):
+            if _try_append(lines, ["", "🚨 URGENT"]):
+                for e in urgent:
+                    if not _try_append(lines, [f"• {e}"]):
                         break
 
-    # Allergy shot reminder (one line)
-    allergy = data.get("allergy_shot_reminder", "")
-    if allergy:
-        _try_append(lines, ["", allergy])
+    # Email highlights
+    emails = data.get("email_highlights", [])
+    email_sec = ["", "📧 HIGHLIGHTS"]
+    email_sec += [f"• {e}" for e in emails] if emails else ["Inbox is quiet — nothing notable."]
+    if not _try_append(lines, email_sec):
+        if _try_append(lines, ["", "📧 HIGHLIGHTS"]):
+            for e in emails:
+                if not _try_append(lines, [f"• {e}"]):
+                    break
 
-    # Week preview (Monday) or week kickoff (Friday)
+    # Allergy shot
+    allergy = data.get("allergy_shot", data.get("allergy_shot_reminder", ""))
+    if allergy:
+        _try_append(lines, ["", "🩹 ALLERGY SHOT", allergy])
+
+    # Week preview (Monday)
     week_preview = data.get("week_preview", [])
     if week_preview:
-        _try_append(lines, ["", "Week ahead:"] + week_preview)
+        wp = ["", "📅 WEEK AHEAD"] + [f"• {e}" for e in week_preview]
+        if not _try_append(lines, wp):
+            if _try_append(lines, ["", "📅 WEEK AHEAD"]):
+                for e in week_preview:
+                    if not _try_append(lines, [f"• {e}"]):
+                        break
 
+    # Week kickoff (Friday)
     week_kickoff = data.get("week_kickoff", [])
     if week_kickoff:
-        _try_append(lines, ["", "Next week:"] + week_kickoff)
+        wk = ["", "📅 NEXT WEEK"] + [f"• {e}" for e in week_kickoff]
+        if not _try_append(lines, wk):
+            if _try_append(lines, ["", "📅 NEXT WEEK"]):
+                for e in week_kickoff:
+                    if not _try_append(lines, [f"• {e}"]):
+                        break
 
     # Focus — lowest priority
     focus = data.get("focus", "")

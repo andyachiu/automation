@@ -4,17 +4,19 @@ A macOS automation toolkit that uses Claude AI with Google Calendar and Gmail to
 
 ## What It Does
 
-- **Morning Briefing** — Scheduled daily summary of your calendar events and emails, delivered straight to iMessage
+- **Morning Briefing** — Daily summary of today's calendar, emails, weather, and allergy shot status, delivered to iMessage
+- **Evening Briefing** — Look-ahead for tomorrow's schedule, pending replies, and what to prepare tonight
 - **Interactive Chat** — Ask Claude questions with full calendar/email context from the command line
 
 Features:
 - Weather via wttr.in injected as context
-- Monday mode: adds a week-at-a-glance section on Mondays
-- Structured JSON output formatted into clean, scannable plain text
-- Smarter email urgency filtering (direct recipients, time-sensitive language, 24h window)
-- Failure notifications via iMessage if the briefing or deploy fails
-- Persistent logging to `~/.morning_brief.log` and `~/.morning_brief_deploy.log`
-- Separate deploy cron so code updates never block the 8am briefing
+- Monday/Friday modes: week-ahead preview on Mondays, next-week kickoff on Fridays
+- Allergy shot check on Mon/Wed/Fri: next appointment or reminder to book
+- Two email sections: `🚨 URGENT` (direct + time-sensitive) and `📧 HIGHLIGHTS` (newsletters, shipping, notable items)
+- Emoji-sectioned output optimized for iMessage readability
+- Failure notifications via iMessage if a briefing or deploy fails
+- Persistent logging to `~/.morning_brief.log`, `~/.evening_brief.log`, `~/.morning_brief_deploy.log`
+- Separate deploy agent so code updates never block the morning briefing
 
 ## Requirements
 
@@ -61,21 +63,28 @@ The environment tests check:
 - All Keychain entries exist and are non-empty
 - Google OAuth client credentials are valid JSON
 
-> **Note:** The `/morning-brief` Claude Code skill runs `run_morning_brief.sh` on your **local Mac**. It requires Keychain access and the Messages app. If invoked from a sandboxed environment, Keychain reads will fail and no iMessage will be sent.
+> **Note:** The `/morning-brief` Claude Code skill uses Claude Code's own MCP auth (separate from the Python SDK OAuth tokens). It requires Keychain access and the Messages app for iMessage delivery. If invoked from a sandboxed environment, iMessage delivery will be skipped.
 
 ## Schedule Daily Briefings
 
-Two cron jobs: one to deploy at 7am, one to run the brief at 8am.
+Scheduling is handled via launchd. Plist files are in `../plists/` — copy them to `~/Library/LaunchAgents/` and load:
 
 ```bash
-crontab -e
-# Add these two lines (adjust the path):
-0 7 * * 1-5 /Users/andychiu/Code/automation/scripts/deploy.sh
-0 8 * * 1-5 /Users/andychiu/Code/automation/scripts/run_morning_brief.sh
+cp ../plists/com.andychiu.automation.deploy.plist ~/Library/LaunchAgents/
+cp ../plists/com.andychiu.automation.morning-brief.plist ~/Library/LaunchAgents/
+cp ../plists/com.andychiu.automation.evening-brief.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.andychiu.automation.deploy.plist
+launchctl load ~/Library/LaunchAgents/com.andychiu.automation.morning-brief.plist
+launchctl load ~/Library/LaunchAgents/com.andychiu.automation.evening-brief.plist
+# Verify:
+launchctl list | grep andychiu
 ```
 
+Default schedule: deploy at 6am, morning brief at 7am weekdays / 9am weekends, evening brief at 9pm daily.
+
 Logs:
-- `~/.morning_brief.log` — briefing run logs (token refresh, Claude API, iMessage delivery)
+- `~/.morning_brief.log` — morning briefing run logs
+- `~/.evening_brief.log` — evening briefing run logs
 - `~/.morning_brief_deploy.log` — deploy logs (git pull, uv sync)
 
 ## Auto-Deploy from GitHub
@@ -123,37 +132,60 @@ Then you can say "get my morning brief" in any Claude Code session.
 ## How It Works
 
 ```
-deploy.sh (7am)                    run_morning_brief.sh (8am)
-  ├── git pull origin master         ├── Read API key + iMessage target from Keychain
-  ├── uv sync                        ├── Refresh Google OAuth tokens
-  └── log / notify on failure        ├── Read fresh tokens from Keychain
-                                     └── morning_brief.py
-                                         ├── Fetch weather from wttr.in
-                                         ├── Build prompt (Monday mode if applicable)
-                                         ├── Call Claude (Haiku) with Calendar + Gmail MCP
-                                         ├── Parse JSON response → format as plain text
-                                         ├── Send via iMessage
-                                         └── On any failure: send error iMessage
+deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evening_brief.sh (9pm)
+  ├── git pull origin master         ├── Read keys from Keychain           ├── Read keys from Keychain
+  ├── uv sync                        ├── Refresh Google OAuth tokens        ├── Refresh Google OAuth tokens
+  └── log / notify on failure        ├── Read fresh tokens                  ├── Read fresh tokens
+                                     └── morning_brief.py                   └── evening_brief.py
+                                         ├── Fetch weather (wttr.in)            ├── Fetch weather (wttr.in)
+                                         ├── Build prompt (Mon/Fri/allergy)     ├── Build prompt
+                                         ├── Call Haiku + Calendar/Gmail MCP    ├── Call Haiku + Calendar/Gmail MCP
+                                         ├── Parse JSON → emoji sections        ├── Parse JSON → emoji sections
+                                         ├── Send via iMessage                  ├── Send via iMessage
+                                         └── On failure: send error iMessage    └── On failure: send error iMessage
 ```
 
 ## Output Format
 
-Briefings are structured plain text, e.g.:
-
+**Morning brief:**
 ```
-Sat Mar 21 | San Francisco: Sunny +68F
-2 meetings, 1 urgent email
+☀️ Wed Mar 26 | san francisco: ⛅  +62°F
 
-9 AM: Standup
-2 PM: 1:1 with advisor (prep needed)
+📅 SCHEDULE
+• 9:00 AM — Allergy Shot
+• 2:00 PM — 1:1 with advisor (prep needed)
 
-Emails:
-Reply ASAP: grant deadline from Prof. Lee
+🚨 URGENT
+• Prof. Lee: grant deadline — reply needed today
 
-Focus: send thesis chapter before 2 PM
+📧 HIGHLIGHTS
+• Necessary Ventures: AI shift from academia; SPACs making a comeback
+• Target: package from order #912003 has arrived
+
+🩹 ALLERGY SHOT
+Next shot: Thu Mar 26 at 9:00 AM
+
+Focus: reply to Prof. Lee before your 2 PM.
 ```
 
-On Mondays, a "Week ahead:" section is added after the events.
+On Mondays a `📅 WEEK AHEAD` section is added; on Fridays a `📅 NEXT WEEK` section.
+
+**Evening brief:**
+```
+🌙 Tomorrow, Thu Mar 27 | san francisco: 🌧  +58°F
+
+📅 TOMORROW
+• 9:00 AM — Allergy Shot
+• 2:00 PM — 1:1 with advisor (prep needed)
+
+📬 PENDING REPLIES
+• Prof. Lee: grant deadline — needs response
+
+📧 HIGHLIGHTS
+• Necessary Ventures: weekly VC digest
+
+Tonight: prep talking points for the 2 PM 1:1.
+```
 
 ## Authentication
 
@@ -171,9 +203,11 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ## Project Structure
 
 ```
-├── morning_brief.py        # Generates and sends daily briefing
-├── deploy.sh               # Pulls latest code and syncs dependencies (7am cron)
-├── run_morning_brief.sh    # Production wrapper: token refresh + briefing (8am cron)
+├── morning_brief.py        # Morning briefing (today's schedule, emails, weather, allergy shot)
+├── evening_brief.py        # Evening look-ahead (tomorrow's schedule, pending replies)
+├── deploy.sh               # Pulls latest code and syncs dependencies (6am launchd)
+├── run_morning_brief.sh    # Production wrapper: token refresh + morning brief
+├── run_evening_brief.sh    # Production wrapper: token refresh + evening brief
 ├── ask_claude.py           # Interactive chat with conversation history
 ├── ask_claude.sh           # Bash wrapper for ask_claude.py
 ├── oauth_setup.py          # One-time Google OAuth setup
@@ -182,7 +216,7 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ├── check_setup.py          # Preflight environment check
 ├── check_api_key.py        # Validates Anthropic API key
 ├── allergy-shot-check/
-│   └── check_allergy_shot.sh  # Allergy appointment reminder
+│   └── check_allergy_shot.sh  # Standalone allergy appointment reminder
 ├── tests/
 │   ├── test_morning_brief.py  # Unit tests (offline, fully mocked)
 │   └── test_environment.py    # Environment/integration tests (macOS only)

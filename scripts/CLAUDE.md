@@ -9,7 +9,7 @@ This is a macOS automation toolkit that integrates Claude AI with Google Calenda
 
 **Platform:** macOS only (requires Keychain, `osascript`, Messages app)
 **Runtime:** Python >=3.13.6, managed with `uv`
-**Model:** `claude-sonnet-4-6` (Sonnet — prompt constrains to 2 MCP tool calls to stay within 5-minute timeout)
+**Model:** `claude-haiku-4-5-20251001` (Haiku — required to complete within the 5-minute MCP server timeout; on allergy shot days the prompt makes 3 tool calls)
 
 ---
 
@@ -203,7 +203,7 @@ ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/m
 ## Development Notes
 
 - **Do not add markdown formatting** to Claude responses — they are delivered as plain iMessages
-- **Model:** `claude-sonnet-4-6`. MCP server enforces a ~5-minute connection timeout. Prompt is constrained to 2 tool calls max (calendar + email) to stay within it. `sent_awaiting_reply` was removed as it required extra MCP calls.
+- **Model:** `claude-haiku-4-5-20251001`. MCP server enforces a ~5-minute connection timeout. Prompt is constrained to 2 tool calls max (calendar + email) to stay within it. `sent_awaiting_reply` was removed as it required extra MCP calls.
 - **Deploy is separate from the briefing** — merge to `master` and `deploy.sh` picks it up at 7am
 - **Token refresh** must happen before every token read — Google tokens expire in ~1 hour
 - **`check_api_key.py`** only tests the Anthropic API key. Use `TROUBLESHOOTING.md` for MCP issues

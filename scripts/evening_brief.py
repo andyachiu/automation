@@ -23,7 +23,7 @@ IMESSAGE_TARGET = os.environ.get("IMESSAGE_TARGET", "")
 GCAL_TOKEN = os.environ.get("GCAL_TOKEN", "")
 GMAIL_TOKEN = os.environ.get("GMAIL_TOKEN", "")
 MAX_MESSAGE_CHARS = 1200
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-haiku-4-5-20251001"
 
 # ── Weather ───────────────────────────────────────────────────────────────────
 
@@ -56,20 +56,20 @@ Tomorrow is {tomorrow_label} ({tomorrow_iso}).
 
 Using my Google Calendar and Gmail (2 tool calls max — calendar first, then email):
 
-1. List all events on {tomorrow_iso} (from midnight to 11:59 PM local time; time + title; flag \
-anything back-to-back or needing prep). Do not include events from other days.
-2. Check the 50 most recent unread emails in my inbox. Flag emails needing a reply that meet \
-all of these criteria:
-   - Addressed directly to you in the To: field (not CC or mailing list)
-   - From a real person (not automated sender, newsletter, or notification)
-   - Received today and still unanswered
-   - Requires a response (contains a question, request, or ask)
+1. List all events on {tomorrow_iso} (from midnight to 11:59 PM local time; format each as \
+"TIME — TITLE"; flag anything back-to-back or needing prep in the title). Do not include events from other days.
+2. Check the 50 most recent unread emails in my inbox (not sent, not search). Separate into two groups:
+   PENDING REPLIES: directly addressed in To: (not CC/mailing list), from a real person, \
+received today, unanswered, and requires a response (contains a question, request, or ask).
+   HIGHLIGHTS: notable non-urgent items — substantive newsletters (VC/tech digests, news), \
+shipping/order updates, anything worth a quick note. Skip promos and automated noise.
 3. Close with one sentence: the single most important thing to prepare or do tonight.
 
 Return ONLY a valid JSON object with these keys:
   "summary": one-line overview (e.g. "3 meetings tomorrow, 1 pending reply")
-  "tomorrow_events": list of strings, one per event (e.g. ["9 AM: Standup", "2 PM: 1:1 (prep needed)"])
-  "pending_replies": list of strings, one per email needing reply (empty list if none)
+  "tomorrow_events": list of strings formatted as "TIME — TITLE" (e.g. ["9:00 AM — Standup", "2:00 PM — 1:1 (prep needed)"]); empty list if no events
+  "pending_replies": list of strings formatted as "Sender: one-line summary" for emails needing a reply; empty list if none
+  "email_highlights": list of strings formatted as "Sender: one-line summary" for notable non-urgent emails; empty list if nothing worth noting
   "prep": one sentence, the #1 thing to prepare or handle tonight
 
 Return only valid JSON, no other text.
@@ -78,7 +78,8 @@ Return only valid JSON, no other text.
 
 SYSTEM_PROMPT = """\
 You are a concise personal assistant writing an evening look-ahead briefing delivered as an iMessage.
-Return only a valid JSON object — no markdown, no preamble, no explanation, no surrounding text.
+Return only a valid JSON object. Do not include any text before or after the JSON object — \
+no preamble, no explanation, no markdown, no code fences.
 Be terse and factual. All string values must be plain text (no asterisks, no bullet symbols).
 Use at most 2 tool calls: one to fetch tomorrow's calendar events, one to fetch recent emails. \
 Do not make additional calls. Fetch all data first, then compose your response entirely from what you retrieved.
@@ -123,13 +124,19 @@ def get_briefing(weather: str) -> str:
 
 # ── Format briefing ───────────────────────────────────────────────────────────
 
+def _try_append(lines: list[str], candidate: list[str]) -> bool:
+    """Append candidate lines if they fit within MAX_MESSAGE_CHARS. Returns True if added."""
+    if len("\n".join(lines + candidate)) <= MAX_MESSAGE_CHARS:
+        lines.extend(candidate)
+        return True
+    return False
+
+
 def format_briefing(raw: str, weather: str) -> str:
-    """Parse JSON briefing and format as plain text. Falls back to raw text."""
+    """Parse JSON briefing and format as plain text with emoji sections. Falls back to raw text."""
     tomorrow = datetime.now() + timedelta(days=1)
-    header_parts = [f"Tomorrow ({tomorrow.strftime('%a %b %-d')})"]
-    if weather:
-        header_parts.append(weather)
-    header = " | ".join(header_parts)
+    date_str = tomorrow.strftime("%a %b %-d")
+    header = f"🌙 Tomorrow, {date_str} | {weather}" if weather else f"🌙 Tomorrow, {date_str}"
 
     try:
         data = json.loads(raw)
@@ -147,26 +154,42 @@ def format_briefing(raw: str, weather: str) -> str:
             log.warning("Response was not valid JSON, using raw text")
             return f"{header}\n\n{raw}"
 
-    lines = [header, data.get("summary", "")]
+    lines: list[str] = [header]
 
+    # Tomorrow's schedule
     events = data.get("tomorrow_events", [])
-    if events:
-        lines.append("")
-        lines.extend(events)
-    else:
-        lines.append("")
-        lines.append("No events tomorrow.")
+    sched = ["", "📅 TOMORROW"]
+    sched += [f"• {e}" for e in events] if events else ["Nothing scheduled — enjoy the open day!"]
+    if not _try_append(lines, sched):
+        _try_append(lines, ["", "📅 TOMORROW"])
+        for e in events:
+            if not _try_append(lines, [f"• {e}"]):
+                break
 
+    # Pending replies — only shown if present
     pending = data.get("pending_replies", [])
     if pending:
-        lines.append("")
-        lines.append("Pending replies:")
-        lines.extend(pending)
+        pending_sec = ["", "📬 PENDING REPLIES"] + [f"• {e}" for e in pending]
+        if not _try_append(lines, pending_sec):
+            if _try_append(lines, ["", "📬 PENDING REPLIES"]):
+                for e in pending:
+                    if not _try_append(lines, [f"• {e}"]):
+                        break
 
+    # Email highlights
+    emails = data.get("email_highlights", [])
+    email_sec = ["", "📧 HIGHLIGHTS"]
+    email_sec += [f"• {e}" for e in emails] if emails else ["Inbox is quiet — nothing notable."]
+    if not _try_append(lines, email_sec):
+        if _try_append(lines, ["", "📧 HIGHLIGHTS"]):
+            for e in emails:
+                if not _try_append(lines, [f"• {e}"]):
+                    break
+
+    # Tonight's prep — lowest priority
     prep = data.get("prep", "")
     if prep:
-        lines.append("")
-        lines.append(f"Tonight: {prep}")
+        _try_append(lines, ["", f"Tonight: {prep}"])
 
     return "\n".join(lines)
 
