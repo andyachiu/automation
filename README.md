@@ -6,7 +6,6 @@ macOS automation scripts using Claude AI, Google Calendar, and Gmail.
 
 - **Morning brief** — Daily calendar + email summary delivered via iMessage at 8 AM on weekdays
 - **Evening brief** — Next-day look-ahead with pending email reminders, delivered at 9 PM daily
-- **Interactive chat** — Ask Claude questions with live calendar/email context from the command line
 
 ## Structure
 

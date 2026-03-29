@@ -5,7 +5,7 @@
 This is a macOS automation toolkit that integrates Claude AI with Google Calendar and Gmail to provide:
 
 1. **Morning Briefing** (`morning_brief.py`): Scheduled daily summary of calendar events and emails, delivered via iMessage
-2. **Interactive Assistant** (`ask_claude.py` / `ask_claude.sh`): Command-line chat with calendar/email context, optionally sent via iMessage
+2. **Evening Briefing** (`evening_brief.py`): Look-ahead for tomorrow's schedule and pending replies, delivered via iMessage
 
 **Platform:** macOS only (requires Keychain, `osascript`, Messages app)
 **Runtime:** Python >=3.13.6, managed with `uv`
@@ -23,10 +23,10 @@ automation/
 │   └── com.andychiu.allergy-shot-check.plist       # allergy check Mon/Wed/Fri
 └── scripts/                # Python project root (uv, pyproject.toml)
     ├── morning_brief.py        # Generates and sends daily morning briefing
+    ├── evening_brief.py        # Generates and sends evening look-ahead briefing
     ├── deploy.sh               # Pulls latest code from GitHub + runs uv sync (7am launchd)
     ├── run_morning_brief.sh    # Production wrapper: token refresh + morning_brief.py (8am launchd)
-    ├── ask_claude.py           # Interactive Claude chat with daily conversation history
-    ├── ask_claude.sh           # Bash wrapper: refreshes tokens, optionally sends via iMessage
+    ├── run_evening_brief.sh    # Production wrapper: token refresh + evening_brief.py (9pm launchd)
     ├── check_api_key.py        # Validates Anthropic API key only (not MCP connectivity)
     ├── check_setup.py          # Preflight environment check
     ├── oauth_setup.py          # One-time OAuth authorization flow for Google services
@@ -112,22 +112,6 @@ run_morning_brief.sh
       └── On failure: notify_failure() sends short error iMessage
 ```
 
-### Interactive Chat
-```
-ask_claude.sh "your question"
-  ├── Read Anthropic API key from Keychain
-  ├── refresh_tokens.py
-  ├── Read fresh GCAL_TOKEN and GMAIL_TOKEN from Keychain
-  └── ask_claude.py "your question"
-      ├── Load .conversation_history.json (auto-cleared when date changes)
-      ├── Append user message
-      ├── Call claude-haiku-4-5 (with MCP servers if tokens present)
-      ├── Append assistant response to history
-      ├── Save history with today's date
-      └── Print response to stdout
-          └── (Optional with --send) Send via iMessage
-```
-
 ---
 
 ## Key Conventions
@@ -158,12 +142,6 @@ ask_claude.sh "your question"
 - Keychain reads use: `security find-generic-password -a "$USER" -s "<key-name>" -w`
 - Missing Keychain entries cause immediate exit with a descriptive error
 - Token refresh always runs before reading tokens (tokens expire in ~1 hour)
-
-### Conversation History
-- Stored in `.conversation_history.json` (gitignored)
-- Format: `{"date": "YYYY-MM-DD", "messages": [...]}`
-- Auto-cleared when date changes (daily context reset)
-- Manually cleared with `ask_claude.py --clear`
 
 ---
 
@@ -208,7 +186,6 @@ ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/m
 - **Token refresh** must happen before every token read — Google tokens expire in ~1 hour
 - **`check_api_key.py`** only tests the Anthropic API key. Use `TROUBLESHOOTING.md` for MCP issues
 - `main.py` is a placeholder and not used by any production script
-- The `.conversation_history.json` file is intentionally gitignored (contains personal data)
 - Unit tests (`test_morning_brief.py`) are fully offline and safe to run anywhere
 - Integration tests (`test_environment.py`) require macOS + Keychain — will fail in CI/sandboxes
 

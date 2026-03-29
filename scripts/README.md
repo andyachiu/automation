@@ -1,12 +1,11 @@
 # Morning Brief - macOS Automation Toolkit
 
-A macOS automation toolkit that uses Claude AI with Google Calendar and Gmail to deliver daily briefings and interactive chat via iMessage.
+A macOS automation toolkit that uses Claude AI with Google Calendar and Gmail to deliver daily briefings via iMessage.
 
 ## What It Does
 
 - **Morning Briefing** — Daily summary of today's calendar, emails, weather, and allergy shot status, delivered to iMessage
 - **Evening Briefing** — Look-ahead for tomorrow's schedule, pending replies, and what to prepare tonight
-- **Interactive Chat** — Ask Claude questions with full calendar/email context from the command line
 
 Features:
 - Weather via wttr.in injected as context
@@ -107,18 +106,6 @@ To run a deploy manually:
 bash deploy.sh
 ```
 
-## Interactive Chat
-
-```bash
-# Ask a question (uses calendar/email context)
-bash ask_claude.sh "What meetings do I have today?"
-
-# Ask and send the response via iMessage
-bash ask_claude.sh --send "Summarize my unread emails"
-```
-
-Conversation history resets daily and is stored locally in `.conversation_history.json`.
-
 ## Claude Code Skill
 
 This repo includes a `/morning-brief` skill for Claude Code. To make it available globally:
@@ -208,8 +195,6 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ├── deploy.sh               # Pulls latest code and syncs dependencies (6am launchd)
 ├── run_morning_brief.sh    # Production wrapper: token refresh + morning brief
 ├── run_evening_brief.sh    # Production wrapper: token refresh + evening brief
-├── ask_claude.py           # Interactive chat with conversation history
-├── ask_claude.sh           # Bash wrapper for ask_claude.py
 ├── oauth_setup.py          # One-time Google OAuth setup
 ├── shared/
 │   └── refresh_tokens.py   # Refreshes expired Google OAuth tokens
