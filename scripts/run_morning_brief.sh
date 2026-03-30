@@ -85,5 +85,36 @@ GMAIL_TOKEN="$(security find-generic-password -a "$USER" -s "morning-brief-gmail
 export GCAL_TOKEN
 export GMAIL_TOKEN
 
+run_brief() {
+    uv run "$SCRIPT_DIR/morning_brief.py" "$@"
+}
+
 log "Running morning_brief.py..."
-exec uv run "$SCRIPT_DIR/morning_brief.py" "$@"
+trap - ERR
+if run_brief "$@"; then
+    exit 0
+fi
+trap on_failure ERR
+
+log "morning_brief.py failed — retrying in 10 minutes..."
+sleep 600
+
+# Refresh tokens again before retry (they may have expired or been invalidated)
+log "Refreshing OAuth tokens (retry)..."
+uv run "$SCRIPT_DIR/shared/refresh_tokens.py" || {
+    log_err "Token refresh failed on retry. Re-run: uv run oauth_setup.py"
+    exit 1
+}
+
+GCAL_TOKEN="$(security find-generic-password -a "$USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
+    log_err "No gcal token after retry refresh."
+    exit 1
+}
+GMAIL_TOKEN="$(security find-generic-password -a "$USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
+    log_err "No gmail token after retry refresh."
+    exit 1
+}
+export GCAL_TOKEN GMAIL_TOKEN
+
+log "Running morning_brief.py (retry)..."
+run_brief "$@"
