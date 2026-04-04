@@ -10,36 +10,21 @@ Generate a concise, friendly daily briefing covering calendar, email, weather, r
 ## Step 1: Gather data (do all in parallel where possible)
 
 ### Apple Reminders
-Run this bash command to fetch incomplete reminders:
+Run this bash command to fetch overdue and due-today reminders directly from the macOS Reminders sqlite DB via the project's `shared/reminders.py` module:
+
 ```bash
-osascript <<'EOF'
-set output to ""
-tell application "Reminders"
-    repeat with aList in lists
-        set listName to name of aList
-        if listName is not "Groceries" and listName is not "Recently Deleted" then
-            set incompleteReminders to (reminders in aList whose completed is false)
-            repeat with r in incompleteReminders
-                set rName to name of r
-                set rDue to ""
-                try
-                    set dueDate to due date of r
-                    if dueDate is not missing value then
-                        set rDue to (dueDate as string)
-                    end if
-                end try
-                set output to output & listName & "|||" & rName & "|||" & rDue & "\n"
-            end repeat
-        end if
-    end repeat
-end tell
-return output
-EOF
+cd /Users/andychiu/Code/automation/scripts && uv run python -c "
+from datetime import datetime
+from shared.reminders import get_reminders
+r = get_reminders(datetime.now())
+for x in r['overdue']: print('OVERDUE|||' + x)
+for x in r['due']:     print('DUE|||'     + x)
+"
 ```
 
-Parse the `|||`-delimited output. For the brief, include:
-- Reminders with a due date that is **today or earlier** — prefix overdue ones with `[OVERDUE]`
-- If none have due dates, show up to 5 reminders without dates
+**Do NOT use `osascript tell application \"Reminders\"`** — it hangs indefinitely under Claude Code (AppleEvents + TCC prompt that never gets answered). The sqlite approach is instant and already works from launchd (FDA is granted on `/Users/andychiu/.local/bin/uv`).
+
+Parse the output: lines beginning with `OVERDUE|||` are overdue reminders, `DUE|||` are due today. The module only returns reminders that have a due date — reminders without due dates are intentionally excluded. Prefix overdue items with `[OVERDUE]` in the brief. Omit the REMINDERS section entirely if both lists are empty.
 
 ### Calendar
 Use `gcal_list_events` to pull today's events:
@@ -92,6 +77,11 @@ Write a concise, scannable briefing in this format. Keep it tight — this gets 
 • [Sender]: [One-line summary]
 (Group by importance. Skip noise. If nothing notable: "Inbox is quiet — nothing urgent.")
 
+✅ REMINDERS
+• [OVERDUE] [Reminder title]
+• [Reminder title]
+(Overdue first, then due today. Omit this entire section if there are no overdue or due-today reminders.)
+
 🌤️ WEATHER
 [Current temp], [conditions]. High of [X]°F, low of [Y]°F.
 (Add a note if rain is expected or if it's notably hot/cold.)
@@ -124,25 +114,25 @@ If `mcp__dispatch__start_code_task` is available, dispatch the iMessage send to 
 - `prompt`:
 
   ```
-  Send this exact message via iMessage. Read the target from Keychain, write the message to a temp file to avoid shell escaping issues, then use osascript:
+  Send this exact message via iMessage. Write the briefing to a temp file using a heredoc (to preserve newlines), read the target from Keychain, then use osascript:
 
-  BRIEFING_TEXT='[INSERT THE FULL BRIEFING TEXT HERE]'
+  cat > /tmp/morning_brief_msg.txt << 'BRIEFEOF'
+  [INSERT THE FULL BRIEFING TEXT HERE — keep actual line breaks, do not escape them]
+  BRIEFEOF
 
   IMESSAGE_TARGET=$(security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)
 
-  echo "$BRIEFING_TEXT" > /tmp/morning_brief_msg.txt
-
-  osascript <<'EOF'
-  set msgText to (do shell script "cat /tmp/morning_brief_msg.txt")
-  tell application "Messages"
-    set targetService to 1st service whose service type = iMessage
-    set targetBuddy to buddy "$IMESSAGE_TARGET" of targetService
-    send msgText to targetBuddy
-  end tell
-  EOF
+  osascript -e 'set msgText to (do shell script "cat /tmp/morning_brief_msg.txt")' \
+            -e 'tell application "Messages"' \
+            -e 'set targetService to 1st service whose service type = iMessage' \
+            -e "set targetBuddy to buddy \"$IMESSAGE_TARGET\" of targetService" \
+            -e 'send msgText to targetBuddy' \
+            -e 'end tell'
 
   Report whether the send succeeded or failed.
   ```
+
+**Critical:** the briefing text must be inserted into the heredoc with real newlines, not `\n` escape sequences. If you paste the briefing as a single line, iMessage will receive it as a single line.
 
 Then wait for the Code session to complete using `read_transcript` and let the user know whether delivery succeeded.
 
@@ -161,6 +151,8 @@ cat > /tmp/morning_brief_msg.txt << 'BRIEFEOF'
 [PASTE THE FULL BRIEFING TEXT HERE]
 BRIEFEOF
 ```
+
+**Critical:** paste the briefing with real line breaks between sections, not `\n` escape sequences or as a single joined line. The single-quoted heredoc (`<< 'BRIEFEOF'`) preserves content literally, so whatever layout you pass is what iMessage receives.
 
 **Call 3** — Send via osascript (substitute IMESSAGE_TARGET from Call 1):
 ```bash
