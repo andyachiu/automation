@@ -4,6 +4,7 @@ Shared helpers for briefing scripts.
 
 import json
 import logging
+import os
 import subprocess
 import urllib.request
 
@@ -12,12 +13,13 @@ import anthropic
 
 def fetch_weather(user_agent: str, log: logging.Logger) -> str:
     """Fetch one-line weather summary from wttr.in. Returns empty string on failure."""
+    timeout = int(os.environ.get("WEATHER_TIMEOUT", "5"))
     try:
         req = urllib.request.Request(
             "https://wttr.in/?format=3&u",
             headers={"User-Agent": user_agent},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8").strip()
     except Exception as exc:
         log.warning("Weather fetch failed: %s", exc)
@@ -97,11 +99,11 @@ def send_imessage(
     max_message_chars: int,
     log: logging.Logger,
 ) -> bool:
-    """Send an iMessage. If no target is configured, print to stdout instead."""
+    """Send an iMessage. If no target is configured, print to stdout instead and return False."""
     if not target:
         log.warning("No IMESSAGE_TARGET set — printing to stdout")
         print(message)
-        return True
+        return False
 
     if len(message) > max_message_chars:
         message = message[: max_message_chars - 3] + "..."
