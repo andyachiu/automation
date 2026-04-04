@@ -231,3 +231,149 @@ uv run oauth_setup.py
 1. Re-run `oauth_setup.py` to get a fresh access token for immediate use.
 2. Update `refresh_tokens.py`: check Anthropic's MCP server documentation for the new token endpoint and update the `base_url` or token path in the `MCP_SERVERS` config at the top of the file.
 3. If automated refresh is no longer possible, fall back to the MCP Inspector flow (see "MCP Authentication Error" section) and run `oauth_setup.py` manually when tokens expire (~1 hour TTL).
+
+---
+
+## Deploy Pulls Wrong Branch (`fatal: couldn't find remote ref master`)
+
+### Symptoms
+
+`~/.morning_brief_deploy.log` shows:
+
+```
+fatal: couldn't find remote ref master
+ERROR: git pull failed
+```
+
+Deploy fails silently every day. New commits (features, bug fixes) are never pulled into production. The morning/evening briefs keep running on stale code.
+
+### Root Cause
+
+`deploy.sh` was hardcoded to `git pull origin master`, but the remote branch was renamed to `main`. The `git pull` fails immediately and the trap sends an iMessage notification, but since the brief itself still runs (on old code), the failure is easy to miss.
+
+### How to Diagnose
+
+```bash
+# Check deploy log
+tail -20 ~/.morning_brief_deploy.log
+
+# Check the actual branch name
+cd ~/Code/automation && git branch -vv
+```
+
+### How to Fix
+
+Update `deploy.sh` to match the actual branch name:
+
+```bash
+# In deploy.sh, change:
+git -C "$SCRIPT_DIR" pull origin master
+# To:
+git -C "$SCRIPT_DIR" pull origin main
+```
+
+Then run `bash deploy.sh` manually to catch up on missed commits.
+
+### Prevention
+
+After renaming a branch on GitHub, grep the repo for the old name:
+
+```bash
+grep -r "master" scripts/*.sh plists/
+```
+
+---
+
+## Reminders Section Missing from Launchd-Scheduled Briefings
+
+### Symptoms
+
+Manually running `bash run_morning_brief.sh` from a terminal pulls reminders fine — the `✅ REMINDERS` section appears in the brief. But the scheduled launchd run (7am via `com.andychiu.automation.morning-brief.plist`) delivers a brief with no reminders section, and `~/.morning_brief.log` shows:
+
+```
+WARNING Reminders database not found
+```
+
+No Python exception, no TCC prompt, no obvious error — just silently missing.
+
+### Root Cause
+
+macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Two things make this hard to diagnose:
+
+1. **Silent failure.** `Path.glob("*.sqlite")` on a TCC-protected directory returns an **empty iterator** rather than raising — `_find_db()` in `shared/reminders.py` then returns `None` and logs the generic "database not found" message. `STORES_DIR.exists()` still returns `True`, so the early-return guard doesn't catch it.
+
+2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`) or to the python interpreter that actually calls `sqlite3.connect()`. **Neither works.** TCC uses the "responsible process" model: the wrapper runs `uv run python morning_brief.py`, so `uv` is the direct parent that spawns python, and TCC attributes the FDA decision to **uv**. FDA grants on bash or python are silently ignored.
+
+Confirmed via TCC logs:
+
+```
+AttributionChain:
+  responsible={responsible_path=/Users/andychiu/.local/bin/uv}
+  accessing={binary_path=.../cpython-3.13.6/bin/python3.13}
+  ReqResult(Auth Right: Denied (Service Policy))
+```
+
+### How to Diagnose
+
+```bash
+# Trigger the launchd job in its real sandbox (not your terminal's context)
+launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"
+
+# Watch TCC decisions in real time — look for responsible_path and Denied (Service Policy)
+/usr/bin/log show --predicate 'subsystem == "com.apple.TCC"' --debug --info --last 5m \
+  | grep -E "responsible_path|AllFiles|Denied"
+```
+
+The `responsible_path=` field tells you exactly which binary TCC is checking. That's the binary that needs FDA.
+
+### How to Fix
+
+1. System Settings → Privacy & Security → Full Disk Access
+2. Click `+`, press `Cmd+Shift+G`, paste: `/Users/andychiu/.local/bin/uv`
+3. Toggle it on
+4. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
+5. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
+
+### Applies To
+
+Any launchd agent in this project (morning brief, evening brief, allergy shot check) that reads TCC-protected resources (Reminders, Messages, Contacts, Calendar DB, etc.) via `uv run python ...`. The FDA grant on `uv` covers all of them.
+
+---
+
+## iMessage Plugin Sends Triple Permission Prompts
+
+### Symptoms
+
+Every permission request from Claude Code sends 3 identical `🔐 Permission request` messages to your self-chat. Approving one sends 3 `✅` confirmations back.
+
+### Root Cause
+
+The iMessage plugin's permission request handler (`server.ts`, `notifications/claude/channel/permission_request`) iterates all self-addresses in the `SELF` set and sends to every matching chat GUID:
+
+```typescript
+for (const h of SELF) {
+  for (const { guid } of qChatsForHandle.all(h)) targets.add(guid)
+}
+for (const guid of targets) sendText(guid, text)
+```
+
+`SELF` is populated from `SELECT DISTINCT account FROM message WHERE is_from_me = 1` — a typical iCloud user has 3+ addresses (phone number, iCloud email, alias). Each resolves to a different self-chat GUID, so the same message is sent 3 times.
+
+### How to Fix
+
+Edit `~/.claude/plugins/cache/claude-plugins-official/imessage/0.1.0/server.ts`. Replace the multi-target loop with a single-target send — find the first valid self-chat GUID and send only to that one:
+
+```typescript
+let targetGuid: string | undefined
+for (const h of SELF) {
+  for (const { guid } of qChatsForHandle.all(h)) {
+    targetGuid = guid
+    break
+  }
+  if (targetGuid) break
+}
+```
+
+### Caveats
+
+This file is in the plugin cache. A plugin update will overwrite the fix. The upstream fix belongs in `anthropics/claude-plugins-official`.
