@@ -133,6 +133,53 @@ The remote MCP servers at `gcal.mcp.claude.com` and `gmail.mcp.claude.com` act a
 
 ---
 
+## iMessage Permission Requests Sent to Wrong Chat (Wife Spam)
+
+### Symptoms
+
+A non-allowlisted contact (e.g., spouse) starts receiving automated iMessage permission request blobs like:
+
+```
+🔐 Permission request [xxxxxx]
+Bash: Check plugins subcommands
+{"command":"claude plugins --help 2>&1","description":"Check plugins subcommands"}
+Reply "yes xxxxxx" to allow or "no xxxxxx" to deny.
+```
+
+These messages appear as sent-by-you ("me:") in their chat thread, not as inbound messages from Claude. The contact's DMs get flooded every time Claude performs a multi-step task.
+
+### Root Cause
+
+The iMessage channel's permission approval system sends approval prompts to **all chats Claude has recently seen**, not just the self-chat. If a contact's number appeared in the allowlisted chats (either directly in `allowFrom`, or via a previous access grant), Claude routes permission requests to their thread as well as the self-chat. The result is that every tool call requiring approval fires a message into every visible chat.
+
+The config lives at `~/.claude/channels/imessage/access.json`.
+
+### How to Fix
+
+1. Open `~/.claude/channels/imessage/access.json`
+2. Remove the contact's number from `allowFrom` (or clear the array entirely if only self-chat is needed):
+
+```json
+{
+  "dmPolicy": "allowlist",
+  "allowFrom": [],
+  "groups": {},
+  "pending": {}
+}
+```
+
+With `dmPolicy: "allowlist"` and an empty `allowFrom`, no inbound DMs can trigger Claude and permission requests are only routed to your self-chat.
+
+### How to Verify the Fix
+
+Check `~/.claude/channels/imessage/access.json` — `allowFrom` should be empty (or contain only your own number if self-chat approval is desired). After the fix, no new permission request messages should appear in any third-party chat threads.
+
+### Prevention
+
+Only add numbers to `allowFrom` that you explicitly want to be able to send commands to Claude. Keep your spouse's (or anyone else's) number out of this list unless they are an intended user of the iMessage channel.
+
+---
+
 ## Token Refresh Fails: `/token` Endpoint Changed or Unavailable
 
 ### Symptoms
