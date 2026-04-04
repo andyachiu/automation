@@ -7,7 +7,7 @@
 #
 set -euo pipefail
 
-export PATH="/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$HOME/.evening_brief.log"
@@ -77,5 +77,36 @@ GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brie
 export GCAL_TOKEN
 export GMAIL_TOKEN
 
+run_brief() {
+    "$UV_BIN" run "$SCRIPT_DIR/evening_brief.py" "$@"
+}
+
 log "Running evening_brief.py..."
-"$UV_BIN" run "$SCRIPT_DIR/evening_brief.py" "$@"
+trap - ERR
+if run_brief "$@"; then
+    exit 0
+fi
+trap on_failure ERR
+
+log "evening_brief.py failed — retrying in 10 minutes..."
+sleep 600
+
+# Refresh tokens again before retry (they may have expired or been invalidated)
+log "Refreshing OAuth tokens (retry)..."
+"$UV_BIN" run "$SCRIPT_DIR/shared/refresh_tokens.py" || {
+    log_err "Token refresh failed on retry. Re-run: uv run oauth_setup.py"
+    exit 1
+}
+
+GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
+    log_err "No gcal token after retry refresh."
+    exit 1
+}
+GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
+    log_err "No gmail token after retry refresh."
+    exit 1
+}
+export GCAL_TOKEN GMAIL_TOKEN
+
+log "Running evening_brief.py (retry)..."
+run_brief "$@"

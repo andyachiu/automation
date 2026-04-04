@@ -233,7 +233,7 @@ class TestSendImessage:
     def test_prints_to_stdout_when_no_target(self, capsys):
         with patch("subprocess.run"):
             result = morning_brief.send_imessage("Hello world", "")
-        assert result is True
+        assert result is False
         assert "Hello world" in capsys.readouterr().out
 
     def test_no_subprocess_call_when_no_target(self):

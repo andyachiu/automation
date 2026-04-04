@@ -327,6 +327,8 @@ def main():
     success = send_imessage(message, target)
     if success:
         log.info("Briefing sent successfully")
+    elif not target:
+        log.info("No iMessage target configured — briefing printed to stdout")
     else:
         log.error("Failed to send briefing via iMessage")
         notify_failure(target, "iMessage send failed")
