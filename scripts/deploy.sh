@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — Pull latest code from GitHub master and sync dependencies.
+# deploy.sh — Pull latest code from GitHub main and sync dependencies.
 #
 # Run this on a separate schedule BEFORE run_morning_brief.sh so that code
 # updates are applied cleanly without blocking the briefing on network issues.
@@ -43,7 +43,7 @@ trap on_failure ERR
 
 log "Starting deploy"
 
-git -C "$SCRIPT_DIR" pull origin master >> "$LOG_FILE" 2>&1 || {
+git -C "$SCRIPT_DIR" pull origin main >> "$LOG_FILE" 2>&1 || {
     log_err "git pull failed"
     exit 1
 }
