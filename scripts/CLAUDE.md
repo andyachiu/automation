@@ -18,33 +18,39 @@ This is a macOS automation toolkit that integrates Claude AI with Google Calenda
 ```
 automation/
 ├── plists/                 # launchd agents (copy to ~/Library/LaunchAgents/ to schedule)
-│   ├── com.andychiu.automation.deploy.plist        # deploy at 7am weekdays
-│   ├── com.andychiu.automation.morning-brief.plist # morning brief at 8am weekdays
-│   └── com.andychiu.allergy-shot-check.plist       # allergy check Mon/Wed/Fri
+│   ├── com.andychiu.automation.deploy.plist          # deploy at 6am
+│   ├── com.andychiu.automation.morning-brief.plist   # morning brief at 7am weekdays / 9am weekends
+│   ├── com.andychiu.automation.evening-brief.plist   # evening brief at 9pm daily
+│   └── com.andychiu.allergy-shot-check.plist         # allergy check Mon/Wed/Fri
 └── scripts/                # Python project root (uv, pyproject.toml)
     ├── morning_brief.py        # Generates and sends daily morning briefing
     ├── evening_brief.py        # Generates and sends evening look-ahead briefing
-    ├── deploy.sh               # Pulls latest code from GitHub + runs uv sync (7am launchd)
-    ├── run_morning_brief.sh    # Production wrapper: token refresh + morning_brief.py (8am launchd)
-    ├── run_evening_brief.sh    # Production wrapper: token refresh + evening_brief.py (9pm launchd)
+    ├── deploy.sh               # Pulls latest code from GitHub + runs uv sync
+    ├── run_morning_brief.sh    # Production wrapper: token refresh + morning_brief.py
+    ├── run_evening_brief.sh    # Production wrapper: token refresh + evening_brief.py
     ├── check_api_key.py        # Validates Anthropic API key only (not MCP connectivity)
     ├── check_setup.py          # Preflight environment check
     ├── oauth_setup.py          # One-time OAuth authorization flow for Google services
     ├── shared/
+    │   ├── __init__.py
     │   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
     │   └── refresh_tokens.py   # Refreshes expired Google OAuth access tokens
     ├── allergy-shot-check/
-    │   └── check_allergy_shot.sh  # Allergy appointment reminder via Claude + Calendar
+    │   ├── check_allergy_shot.sh   # Allergy appointment reminder via Claude + Calendar
+    │   ├── check_allergy_shot.py   # Python helper for allergy shot check
+    │   └── README.md
     ├── .claude/skills/
     │   └── morning-brief/      # Claude Code skill: /morning-brief
     │       └── SKILL.md
     ├── tests/
-    │   ├── test_morning_brief.py  # Unit tests (offline, all mocked)
+    │   ├── __init__.py
+    │   ├── test_morning_brief.py  # Unit tests for morning brief (offline, all mocked)
     │   ├── test_reminders.py      # Unit tests for reminders module + brief integration
+    │   ├── test_mcp_setup.py      # Tests for OAuth, token refresh, MCP config, skill
     │   └── test_environment.py    # Integration tests (macOS only, real Keychain)
     ├── pyproject.toml          # Python project config (anthropic>=0.86.0)
     ├── CLAUDE.md               # This file
-    ├── TROUBLESHOOTING.md      # Diagnostic guide for MCP authentication issues
+    ├── TROUBLESHOOTING.md      # Diagnostic guide for MCP and iMessage issues
     └── README.md               # Project documentation and setup guide
 ```
 

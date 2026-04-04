@@ -40,12 +40,13 @@ REQUIRED_BINARIES = ["security", "osascript", "uv", "git"]
 
 REQUIRED_SCRIPTS = [
     "morning_brief.py",
-    "ask_claude.py",
-    "ask_claude.sh",
+    "evening_brief.py",
     "run_morning_brief.sh",
+    "run_evening_brief.sh",
     "deploy.sh",
     "oauth_setup.py",
-    "refresh_tokens.py",
+    "shared/refresh_tokens.py",
+    "shared/reminders.py",
     "check_setup.py",
 ]
 

@@ -199,25 +199,32 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ## Project Structure
 
 ```
-├── morning_brief.py        # Morning briefing (today's schedule, emails, weather, allergy shot)
-├── evening_brief.py        # Evening look-ahead (tomorrow's schedule, pending replies)
+├── morning_brief.py        # Morning briefing (today's schedule, emails, reminders, weather, allergy shot)
+├── evening_brief.py        # Evening look-ahead (tomorrow's schedule, reminders, pending replies)
 ├── deploy.sh               # Pulls latest code and syncs dependencies (6am launchd)
 ├── run_morning_brief.sh    # Production wrapper: token refresh + morning brief
 ├── run_evening_brief.sh    # Production wrapper: token refresh + evening brief
 ├── oauth_setup.py          # One-time Google OAuth setup
 ├── shared/
+│   ├── __init__.py
 │   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
 │   └── refresh_tokens.py   # Refreshes expired Google OAuth tokens
 ├── check_setup.py          # Preflight environment check
 ├── check_api_key.py        # Validates Anthropic API key
 ├── allergy-shot-check/
-│   └── check_allergy_shot.sh  # Standalone allergy appointment reminder
+│   ├── check_allergy_shot.sh   # Standalone allergy appointment reminder
+│   ├── check_allergy_shot.py   # Python helper for allergy shot check
+│   └── README.md
 ├── tests/
-│   ├── test_morning_brief.py  # Unit tests (offline, fully mocked)
+│   ├── __init__.py
+│   ├── test_morning_brief.py  # Unit tests for morning brief (offline, fully mocked)
 │   ├── test_reminders.py      # Unit tests for reminders module + brief integration
+│   ├── test_mcp_setup.py      # Tests for OAuth, token refresh, MCP config, skill
 │   └── test_environment.py    # Environment/integration tests (macOS only)
 ├── .claude/skills/
 │   └── morning-brief/      # /morning-brief Claude Code skill
+│       └── SKILL.md
+├── pyproject.toml          # Python project config (anthropic>=0.86.0)
 ├── CLAUDE.md               # Development notes and conventions
-└── TROUBLESHOOTING.md      # Auth diagnostic guide
+└── TROUBLESHOOTING.md      # Diagnostic guide for MCP and iMessage issues
 ```

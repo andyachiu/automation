@@ -1,5 +1,5 @@
 """
-Tests for MCP setup: oauth_setup.py, refresh_tokens.py, ask_claude.py,
+Tests for MCP setup: oauth_setup.py, shared/refresh_tokens.py,
 morning_brief.py, run_morning_brief.sh, and the Claude Code morning-brief skill.
 
 All tests mock subprocess (Keychain) and network calls so they run without
@@ -13,7 +13,6 @@ import json
 import sys
 import urllib.error
 import yaml
-from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
@@ -198,7 +197,7 @@ class TestKeychainGet:
         return patch("subprocess.check_output", return_value=name.encode())
 
     def test_returns_value_on_success(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         with self._mock_whoami():
             with patch("subprocess.run") as mock_run:
@@ -208,7 +207,7 @@ class TestKeychainGet:
         assert result == "mytoken"
 
     def test_returns_none_on_failure(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         with self._mock_whoami():
             with patch("subprocess.run") as mock_run:
@@ -218,7 +217,7 @@ class TestKeychainGet:
         assert result is None
 
     def test_strips_trailing_whitespace(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         with self._mock_whoami():
             with patch("subprocess.run") as mock_run:
@@ -241,7 +240,7 @@ class TestRefreshToken:
         return json.dumps({"client_id": "cid", "client_secret": "csec"})
 
     def test_returns_false_when_no_refresh_token(self, capsys):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         with patch.object(refresh_tokens, "keychain_get", return_value=None):
             result = refresh_tokens.refresh_token("gcal", self._config())
@@ -251,7 +250,7 @@ class TestRefreshToken:
         assert "oauth_setup.py" in captured.err
 
     def test_returns_false_when_no_client_credentials(self, capsys):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         def side_effect(service):
             if "refresh" in service:
@@ -266,7 +265,7 @@ class TestRefreshToken:
         assert "oauth_setup.py" in captured.err
 
     def test_returns_false_on_http_error(self, capsys):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         def side_effect(service):
             if "client" in service:
@@ -290,7 +289,7 @@ class TestRefreshToken:
         assert "401" in captured.err
 
     def test_returns_false_when_no_access_token_in_response(self, capsys):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         def side_effect(service):
             if "client" in service:
@@ -306,7 +305,7 @@ class TestRefreshToken:
         assert result is False
 
     def test_success_stores_new_access_token(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         def side_effect(service):
             if "client" in service:
@@ -324,7 +323,7 @@ class TestRefreshToken:
         mock_set.assert_called_once_with("morning-brief-gcal-token", "new-access-tok")
 
     def test_rotates_refresh_token_when_new_one_returned(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         def side_effect(service):
             if "client" in service:
@@ -347,7 +346,7 @@ class TestRefreshToken:
         assert call("morning-brief-gcal-refresh-token", "new-refresh-tok") in calls
 
     def test_posts_correct_grant_type(self):
-        import refresh_tokens
+        from shared import refresh_tokens
         import urllib.parse
 
         def side_effect(service):
@@ -377,7 +376,7 @@ class TestRefreshToken:
 
 class TestRefreshMain:
     def test_exits_1_when_any_service_fails(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         results = {"gcal": False, "gmail": True}
 
@@ -391,211 +390,11 @@ class TestRefreshMain:
         assert exc.value.code == 1
 
     def test_exits_0_when_all_succeed(self):
-        import refresh_tokens
+        from shared import refresh_tokens
 
         with patch.object(refresh_tokens, "refresh_token", return_value=True):
             # Should not raise
             refresh_tokens.main()
-
-
-# ===========================================================================
-# ask_claude.py tests
-# ===========================================================================
-
-class TestConversationHistory:
-    def test_load_returns_empty_when_file_missing(self, tmp_path):
-        import ask_claude
-
-        with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "history.json"):
-            result = ask_claude.load_history()
-
-        assert result == []
-
-    def test_load_returns_empty_on_corrupt_json(self, tmp_path):
-        import ask_claude
-
-        hist_file = tmp_path / "history.json"
-        hist_file.write_text("not-json{{{")
-
-        with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-            result = ask_claude.load_history()
-
-        assert result == []
-
-    def test_load_clears_and_returns_empty_for_different_date(self, tmp_path):
-        import ask_claude
-
-        hist_file = tmp_path / "history.json"
-        hist_file.write_text(json.dumps({
-            "date": "2000-01-01",
-            "messages": [{"role": "user", "content": "old message"}],
-        }))
-
-        with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-            result = ask_claude.load_history()
-
-        assert result == []
-        assert not hist_file.exists()
-
-    def test_load_returns_messages_for_today(self, tmp_path):
-        import ask_claude
-
-        hist_file = tmp_path / "history.json"
-        messages = [{"role": "user", "content": "hello"}]
-        hist_file.write_text(json.dumps({
-            "date": date.today().isoformat(),
-            "messages": messages,
-        }))
-
-        with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-            result = ask_claude.load_history()
-
-        assert result == messages
-
-    def test_save_writes_correct_structure(self, tmp_path):
-        import ask_claude
-
-        hist_file = tmp_path / "history.json"
-        messages = [{"role": "user", "content": "test"}]
-
-        with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-            ask_claude.save_history(messages)
-
-        data = json.loads(hist_file.read_text())
-        assert data["date"] == date.today().isoformat()
-        assert data["messages"] == messages
-
-    def test_clear_removes_file(self, tmp_path):
-        import ask_claude
-
-        hist_file = tmp_path / "history.json"
-        hist_file.write_text("{}")
-
-        with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-            ask_claude.clear_history()
-
-        assert not hist_file.exists()
-
-    def test_clear_is_idempotent_when_no_file(self, tmp_path):
-        import ask_claude
-
-        with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "missing.json"):
-            ask_claude.clear_history()  # should not raise
-
-
-class TestAskMCPConfiguration:
-    def _make_mock_client(self, answer="test answer"):
-        mock_block = MagicMock()
-        mock_block.text = answer
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = mock_response
-        mock_client.beta.messages.create.return_value = mock_response
-        return mock_client
-
-    def test_no_mcp_servers_when_tokens_absent(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client()
-
-        with patch.object(ask_claude, "GCAL_TOKEN", ""):
-            with patch.object(ask_claude, "GMAIL_TOKEN", ""):
-                with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "h.json"):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("hello")
-
-        mock_client.messages.create.assert_called_once()
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert "mcp_servers" not in call_kwargs
-        assert "betas" not in call_kwargs
-
-    def test_mcp_servers_added_when_both_tokens_present(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client()
-
-        with patch.object(ask_claude, "GCAL_TOKEN", "gcal-tok"):
-            with patch.object(ask_claude, "GMAIL_TOKEN", "gmail-tok"):
-                with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "h.json"):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("hello")
-
-        mock_client.beta.messages.create.assert_called_once()
-        call_kwargs = mock_client.beta.messages.create.call_args[1]
-        assert "mcp_servers" in call_kwargs
-        assert "betas" in call_kwargs
-        assert "mcp-client-2025-04-04" in call_kwargs["betas"]
-
-    def test_gcal_mcp_server_config(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client()
-
-        with patch.object(ask_claude, "GCAL_TOKEN", "gcal-tok"):
-            with patch.object(ask_claude, "GMAIL_TOKEN", "gmail-tok"):
-                with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "h.json"):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("hello")
-
-        servers = mock_client.beta.messages.create.call_args[1]["mcp_servers"]
-        gcal = next(s for s in servers if s["name"] == "google-calendar")
-        assert gcal["type"] == "url"
-        assert "gcal.mcp.claude.com" in gcal["url"]
-        assert gcal["authorization_token"] == "gcal-tok"
-
-    def test_gmail_mcp_server_config(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client()
-
-        with patch.object(ask_claude, "GCAL_TOKEN", "gcal-tok"):
-            with patch.object(ask_claude, "GMAIL_TOKEN", "gmail-tok"):
-                with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "h.json"):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("hello")
-
-        servers = mock_client.beta.messages.create.call_args[1]["mcp_servers"]
-        gmail = next(s for s in servers if s["name"] == "gmail")
-        assert gmail["type"] == "url"
-        assert "gmail.mcp.claude.com" in gmail["url"]
-        assert gmail["authorization_token"] == "gmail-tok"
-
-    def test_only_gcal_added_when_only_gcal_token(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client()
-
-        with patch.object(ask_claude, "GCAL_TOKEN", "gcal-tok"):
-            with patch.object(ask_claude, "GMAIL_TOKEN", ""):
-                with patch.object(ask_claude, "HISTORY_FILE", tmp_path / "h.json"):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("hello")
-
-        servers = mock_client.beta.messages.create.call_args[1]["mcp_servers"]
-        names = [s["name"] for s in servers]
-        assert "google-calendar" in names
-        assert "gmail" not in names
-
-    def test_conversation_history_preserved_across_calls(self, tmp_path):
-        import ask_claude
-
-        mock_client = self._make_mock_client("second answer")
-
-        hist_file = tmp_path / "h.json"
-        existing = [{"role": "user", "content": "first"}, {"role": "assistant", "content": "first answer"}]
-        hist_file.write_text(json.dumps({"date": date.today().isoformat(), "messages": existing}))
-
-        with patch.object(ask_claude, "GCAL_TOKEN", ""):
-            with patch.object(ask_claude, "GMAIL_TOKEN", ""):
-                with patch.object(ask_claude, "HISTORY_FILE", hist_file):
-                    with patch("anthropic.Anthropic", return_value=mock_client):
-                        ask_claude.ask("second question")
-
-        messages_sent = mock_client.messages.create.call_args[1]["messages"]
-        assert messages_sent[0] == {"role": "user", "content": "first"}
-        assert messages_sent[1] == {"role": "assistant", "content": "first answer"}
-        assert messages_sent[2]["content"] == "second question"
 
 
 # ===========================================================================
@@ -716,7 +515,7 @@ class TestGetBriefingMCPConfig:
         with patch.object(morning_brief, "GCAL_TOKEN", "gcal-token-abc"):
             with patch.object(morning_brief, "GMAIL_TOKEN", "gmail-token-xyz"):
                 with patch("anthropic.Anthropic", return_value=mock_client):
-                    morning_brief.get_briefing()
+                    morning_brief.get_briefing("")
 
         servers = mock_client.beta.messages.create.call_args[1]["mcp_servers"]
         gcal = next(s for s in servers if s["name"] == "google-calendar")
@@ -732,7 +531,7 @@ class TestGetBriefingMCPConfig:
         with patch.object(morning_brief, "GCAL_TOKEN", "gcal-token-abc"):
             with patch.object(morning_brief, "GMAIL_TOKEN", "gmail-token-xyz"):
                 with patch("anthropic.Anthropic", return_value=mock_client):
-                    morning_brief.get_briefing()
+                    morning_brief.get_briefing("")
 
         servers = mock_client.beta.messages.create.call_args[1]["mcp_servers"]
         gmail = next(s for s in servers if s["name"] == "gmail")
@@ -748,7 +547,7 @@ class TestGetBriefingMCPConfig:
         with patch.object(morning_brief, "GCAL_TOKEN", "tok"):
             with patch.object(morning_brief, "GMAIL_TOKEN", "tok"):
                 with patch("anthropic.Anthropic", return_value=mock_client):
-                    morning_brief.get_briefing()
+                    morning_brief.get_briefing("")
 
         kwargs = mock_client.beta.messages.create.call_args[1]
         assert "mcp-client-2025-04-04" in kwargs.get("betas", [])
@@ -771,7 +570,7 @@ class TestGetBriefingMCPConfig:
         with patch.object(morning_brief, "GCAL_TOKEN", "tok"):
             with patch.object(morning_brief, "GMAIL_TOKEN", "tok"):
                 with patch("anthropic.Anthropic", return_value=mock_client):
-                    result = morning_brief.get_briefing()
+                    result = morning_brief.get_briefing("")
 
         assert "Part one." in result
         assert "Part two." in result
@@ -784,95 +583,10 @@ class TestGetBriefingMCPConfig:
         with patch.object(morning_brief, "GCAL_TOKEN", "tok"):
             with patch.object(morning_brief, "GMAIL_TOKEN", "tok"):
                 with patch("anthropic.Anthropic", return_value=mock_client):
-                    morning_brief.get_briefing()
+                    morning_brief.get_briefing("")
 
         kwargs = mock_client.beta.messages.create.call_args[1]
         assert kwargs["model"] == "claude-haiku-4-5-20251001"
-
-
-# ===========================================================================
-# run_morning_brief.sh — git pull behaviour
-# ===========================================================================
-
-class TestRunMorningBriefGitPull:
-    """
-    Verify the git pull step in run_morning_brief.sh by running the real script
-    with a temporary directory of stub executables prepended to PATH.
-    """
-
-    SCRIPT = Path(__file__).parent.parent / "run_morning_brief.sh"
-
-    def _make_stubs(self, tmp_path: Path, git_exit_code: int) -> Path:
-        """Write stub executables into tmp_path/bin and return the bin dir."""
-        import stat
-
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir()
-
-        # git stub: log args and exit with requested code
-        git_stub = bin_dir / "git"
-        git_stub.write_text(
-            f"#!/bin/sh\necho \"[stub] git $*\"\nexit {git_exit_code}\n"
-        )
-        git_stub.chmod(git_stub.stat().st_mode | stat.S_IEXEC)
-
-        # security stub: always returns a dummy token
-        sec_stub = bin_dir / "security"
-        sec_stub.write_text("#!/bin/sh\necho 'stub-token'\nexit 0\n")
-        sec_stub.chmod(sec_stub.stat().st_mode | stat.S_IEXEC)
-
-        # uv stub: succeed silently
-        uv_stub = bin_dir / "uv"
-        uv_stub.write_text("#!/bin/sh\nexit 0\n")
-        uv_stub.chmod(uv_stub.stat().st_mode | stat.S_IEXEC)
-
-        return bin_dir
-
-    def _run(self, tmp_path: Path, git_exit_code: int) -> tuple[int, str, str]:
-        import subprocess, os, stat
-
-        bin_dir = self._make_stubs(tmp_path, git_exit_code)
-        env = os.environ.copy()
-
-        # run_morning_brief.sh line 16 hardcodes:
-        #   export PATH="/Users/…/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-        # This puts real git/security/uv ahead of any stubs in $PATH.
-        # Fix: place symlinks to our stubs in each hardcoded directory that
-        # the script prepends, so the stubs are found first regardless.
-        # Instead, we use a simpler approach: create a modified copy of the
-        # script that prepends the stub bin_dir to PATH.
-        script_text = self.SCRIPT.read_text()
-        patched = script_text.replace(
-            'export PATH="',
-            f'export PATH="{bin_dir}:',
-            1,
-        )
-        patched_script = tmp_path / "run_morning_brief_patched.sh"
-        patched_script.write_text(patched)
-        patched_script.chmod(patched_script.stat().st_mode | stat.S_IEXEC)
-
-        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
-        env.setdefault("USER", "testuser")
-
-        result = subprocess.run(
-            ["bash", str(patched_script)],
-            capture_output=True, text=True, env=env,
-        )
-        return result.returncode, result.stdout, result.stderr
-
-    def test_git_pull_is_called_with_origin_master(self, tmp_path):
-        _rc, out, _err = self._run(tmp_path, git_exit_code=0)
-        assert "pull origin master" in out
-
-    def test_script_continues_when_git_pull_fails(self, tmp_path):
-        """A failed git pull should warn but not abort the script."""
-        rc, out, err = self._run(tmp_path, git_exit_code=1)
-        assert "WARNING" in out + err
-        assert rc == 0
-
-    def test_script_succeeds_when_git_pull_succeeds(self, tmp_path):
-        rc, _out, _err = self._run(tmp_path, git_exit_code=0)
-        assert rc == 0
 
 
 # ===========================================================================

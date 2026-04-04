@@ -135,7 +135,7 @@ class TestBuildUserPrompt:
     def test_json_keys_documented(self):
         with patch("morning_brief.is_monday", return_value=False):
             prompt = morning_brief.build_user_prompt("")
-        for key in ("summary", "events", "urgent_emails", "sent_awaiting_reply", "focus"):
+        for key in ("summary", "events", "urgent_emails", "email_highlights", "focus"):
             assert key in prompt
 
 
@@ -145,15 +145,15 @@ SAMPLE_DATA = {
     "summary": "2 meetings, 1 urgent email",
     "events": ["9 AM: Standup", "2 PM: 1:1 (prep needed)"],
     "urgent_emails": ["Reply ASAP: budget approval from manager"],
-    "sent_awaiting_reply": [],
+    "email_highlights": [],
     "focus": "Finish chapter draft before 2 PM",
 }
 
 
 class TestFormatBriefing:
-    def test_summary_rendered(self):
+    def test_schedule_section_rendered(self):
         result = morning_brief.format_briefing(json.dumps(SAMPLE_DATA), "")
-        assert "2 meetings" in result
+        assert "SCHEDULE" in result
 
     def test_events_rendered(self):
         result = morning_brief.format_briefing(json.dumps(SAMPLE_DATA), "")
@@ -162,7 +162,7 @@ class TestFormatBriefing:
 
     def test_urgent_emails_rendered(self):
         result = morning_brief.format_briefing(json.dumps(SAMPLE_DATA), "")
-        assert "Emails:" in result
+        assert "URGENT" in result
         assert "budget approval" in result
 
     def test_focus_rendered(self):
@@ -186,29 +186,19 @@ class TestFormatBriefing:
     def test_week_preview_rendered(self):
         data = {**SAMPLE_DATA, "week_preview": ["Mon: Offsite", "Wed: Presentation"]}
         result = morning_brief.format_briefing(json.dumps(data), "")
-        assert "Week ahead:" in result
+        assert "WEEK AHEAD" in result
         assert "Mon: Offsite" in result
         assert "Wed: Presentation" in result
 
     def test_empty_week_preview_not_rendered(self):
         data = {**SAMPLE_DATA, "week_preview": []}
         result = morning_brief.format_briefing(json.dumps(data), "")
-        assert "Week ahead:" not in result
+        assert "WEEK AHEAD" not in result
 
-    def test_awaiting_reply_rendered(self):
-        data = {**SAMPLE_DATA, "sent_awaiting_reply": ["Sent proposal 2 days ago"]}
-        result = morning_brief.format_briefing(json.dumps(data), "")
-        assert "Awaiting reply:" in result
-        assert "Sent proposal" in result
-
-    def test_empty_emails_section_skipped(self):
+    def test_empty_urgent_section_skipped(self):
         data = {**SAMPLE_DATA, "urgent_emails": []}
         result = morning_brief.format_briefing(json.dumps(data), "")
-        assert "Emails:" not in result
-
-    def test_empty_awaiting_section_skipped(self):
-        result = morning_brief.format_briefing(json.dumps(SAMPLE_DATA), "")
-        assert "Awaiting reply:" not in result
+        assert "URGENT" not in result
 
     def test_fallback_on_invalid_json(self):
         raw = "Plain text briefing from Claude"
@@ -225,9 +215,8 @@ class TestFormatBriefing:
         assert "Focus:" not in result
 
     def test_missing_optional_keys_dont_crash(self):
-        # Minimal valid JSON
         result = morning_brief.format_briefing('{"summary": "quiet day"}', "")
-        assert "quiet day" in result
+        assert "SCHEDULE" in result
 
 
 # ── send_imessage ─────────────────────────────────────────────────────────────
