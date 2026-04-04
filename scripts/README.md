@@ -4,10 +4,11 @@ A macOS automation toolkit that uses Claude AI with Google Calendar and Gmail to
 
 ## What It Does
 
-- **Morning Briefing** — Daily summary of today's calendar, emails, weather, and allergy shot status, delivered to iMessage
-- **Evening Briefing** — Look-ahead for tomorrow's schedule, pending replies, and what to prepare tonight
+- **Morning Briefing** — Daily summary of today's calendar, emails, reminders, weather, and allergy shot status, delivered to iMessage
+- **Evening Briefing** — Look-ahead for tomorrow's schedule, reminders, pending replies, and what to prepare tonight
 
 Features:
+- Apple Reminders integration: overdue + due-today/tomorrow items read directly from macOS Reminders SQLite DB
 - Weather via wttr.in injected as context
 - Monday/Friday modes: week-ahead preview on Mondays, next-week kickoff on Fridays
 - Allergy shot check on Mon/Wed/Fri: next appointment or reminder to book
@@ -125,6 +126,7 @@ deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evenin
   └── log / notify on failure        ├── Read fresh tokens                  ├── Read fresh tokens
                                      └── morning_brief.py                   └── evening_brief.py
                                          ├── Fetch weather (wttr.in)            ├── Fetch weather (wttr.in)
+                                         ├── Fetch reminders (SQLite DB)        ├── Fetch reminders (SQLite DB)
                                          ├── Build prompt (Mon/Fri/allergy)     ├── Build prompt
                                          ├── Call Haiku + Calendar/Gmail MCP    ├── Call Haiku + Calendar/Gmail MCP
                                          ├── Parse JSON → emoji sections        ├── Parse JSON → emoji sections
@@ -149,6 +151,10 @@ deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evenin
 • Necessary Ventures: AI shift from academia; SPACs making a comeback
 • Target: package from order #912003 has arrived
 
+✅ REMINDERS
+• [OVERDUE] File expense report
+• Call Center to reschedule appointment
+
 🩹 ALLERGY SHOT
 Next shot: Thu Mar 26 at 9:00 AM
 
@@ -170,6 +176,9 @@ On Mondays a `📅 WEEK AHEAD` section is added; on Fridays a `📅 NEXT WEEK` s
 
 📧 HIGHLIGHTS
 • Necessary Ventures: weekly VC digest
+
+✅ REMINDERS
+• [OVERDUE] File expense report
 
 Tonight: prep talking points for the 2 PM 1:1.
 ```
@@ -197,6 +206,7 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ├── run_evening_brief.sh    # Production wrapper: token refresh + evening brief
 ├── oauth_setup.py          # One-time Google OAuth setup
 ├── shared/
+│   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
 │   └── refresh_tokens.py   # Refreshes expired Google OAuth tokens
 ├── check_setup.py          # Preflight environment check
 ├── check_api_key.py        # Validates Anthropic API key
@@ -204,6 +214,7 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 │   └── check_allergy_shot.sh  # Standalone allergy appointment reminder
 ├── tests/
 │   ├── test_morning_brief.py  # Unit tests (offline, fully mocked)
+│   ├── test_reminders.py      # Unit tests for reminders module + brief integration
 │   └── test_environment.py    # Environment/integration tests (macOS only)
 ├── .claude/skills/
 │   └── morning-brief/      # /morning-brief Claude Code skill

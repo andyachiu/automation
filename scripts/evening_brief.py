@@ -15,6 +15,8 @@ from pathlib import Path
 
 import anthropic
 
+from shared.reminders import get_reminders
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger(__name__)
 
@@ -43,12 +45,18 @@ def get_weather() -> str:
 
 # ── Prompt building ───────────────────────────────────────────────────────────
 
-def build_user_prompt(weather: str) -> str:
+def build_user_prompt(weather: str, reminders_ctx: str = "") -> str:
     now = datetime.now()
     tomorrow = now + timedelta(days=1)
     tomorrow_label = tomorrow.strftime("%A, %B %-d")
     tomorrow_iso = tomorrow.strftime("%Y-%m-%d")
     weather_line = f"\nCurrent weather: {weather}" if weather else ""
+
+    reminders_key = ""
+    reminders_block = ""
+    if reminders_ctx:
+        reminders_key = '\n  "reminders": list of strings — copy from the reminders provided below (overdue first, then due tomorrow); empty list if none'
+        reminders_block = f"\n\nApple Reminders (already fetched, do NOT use a tool call for these):\n{reminders_ctx}"
 
     return f"""\
 Today is {now.strftime("%A, %B %-d")} ({now.strftime("%Y-%m-%d")}).{weather_line}
@@ -70,9 +78,9 @@ Return ONLY a valid JSON object with these keys:
   "tomorrow_events": list of strings formatted as "TIME — TITLE" (e.g. ["9:00 AM — Standup", "2:00 PM — 1:1 (prep needed)"]); empty list if no events
   "pending_replies": list of strings formatted as "Sender: one-line summary" for emails needing a reply; empty list if none
   "email_highlights": list of strings formatted as "Sender: one-line summary" for notable non-urgent emails; empty list if nothing worth noting
-  "prep": one sentence, the #1 thing to prepare or handle tonight
+  "prep": one sentence, the #1 thing to prepare or handle tonight{reminders_key}
 
-Return only valid JSON, no other text.
+Return only valid JSON, no other text.{reminders_block}
 """
 
 
@@ -88,7 +96,7 @@ Do not make additional calls. Fetch all data first, then compose your response e
 
 # ── Claude call ───────────────────────────────────────────────────────────────
 
-def get_briefing(weather: str) -> str:
+def get_briefing(weather: str, reminders_ctx: str = "") -> str:
     """Call Claude with MCP servers and return raw response text."""
     client = anthropic.Anthropic()
 
@@ -96,7 +104,7 @@ def get_briefing(weather: str) -> str:
         model=MODEL,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_user_prompt(weather)}],
+        messages=[{"role": "user", "content": build_user_prompt(weather, reminders_ctx)}],
         mcp_servers=[
             {
                 "type": "url",
@@ -186,6 +194,16 @@ def format_briefing(raw: str, weather: str) -> str:
                 if not _try_append(lines, [f"• {e}"]):
                     break
 
+    # Reminders
+    reminders = data.get("reminders", [])
+    if reminders:
+        rem_sec = ["", "✅ REMINDERS"] + [f"• {r}" for r in reminders]
+        if not _try_append(lines, rem_sec):
+            if _try_append(lines, ["", "✅ REMINDERS"]):
+                for r in reminders:
+                    if not _try_append(lines, [f"• {r}"]):
+                        break
+
     # Tonight's prep — lowest priority
     prep = data.get("prep", "")
     if prep:
@@ -252,8 +270,19 @@ def main():
     if weather:
         log.info("Weather: %s", weather)
 
+    tomorrow = datetime.now() + timedelta(days=1)
+    reminders_data = get_reminders(tomorrow)
+    reminders_lines = []
+    for r in reminders_data["overdue"]:
+        reminders_lines.append(f"[OVERDUE] {r}")
+    for r in reminders_data["due"]:
+        reminders_lines.append(f"[Due tomorrow] {r}")
+    reminders_ctx = "\n".join(reminders_lines) if reminders_lines else ""
+    if reminders_ctx:
+        log.info("Reminders: %d overdue, %d due tomorrow", len(reminders_data["overdue"]), len(reminders_data["due"]))
+
     try:
-        raw = get_briefing(weather)
+        raw = get_briefing(weather, reminders_ctx)
         log.info("Received briefing (%d chars raw)", len(raw))
     except Exception as e:
         log.error("API error: %s", e)

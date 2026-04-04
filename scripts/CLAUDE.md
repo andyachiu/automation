@@ -31,6 +31,7 @@ automation/
     ├── check_setup.py          # Preflight environment check
     ├── oauth_setup.py          # One-time OAuth authorization flow for Google services
     ├── shared/
+    │   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
     │   └── refresh_tokens.py   # Refreshes expired Google OAuth access tokens
     ├── allergy-shot-check/
     │   └── check_allergy_shot.sh  # Allergy appointment reminder via Claude + Calendar
@@ -39,6 +40,7 @@ automation/
     │       └── SKILL.md
     ├── tests/
     │   ├── test_morning_brief.py  # Unit tests (offline, all mocked)
+    │   ├── test_reminders.py      # Unit tests for reminders module + brief integration
     │   └── test_environment.py    # Integration tests (macOS only, real Keychain)
     ├── pyproject.toml          # Python project config (anthropic>=0.86.0)
     ├── CLAUDE.md               # This file
@@ -102,10 +104,11 @@ run_morning_brief.sh
   ├── Read fresh GCAL_TOKEN and GMAIL_TOKEN from Keychain
   └── morning_brief.py
       ├── get_weather() → wttr.in (plain text, empty string on failure)
+      ├── get_reminders(today) → reads macOS Reminders SQLite DB (overdue + due today)
       ├── is_monday() → adds week-ahead section if True
-      ├── build_user_prompt(weather) → includes weather + email urgency criteria
-      ├── get_briefing(weather) → Claude Haiku with Calendar + Gmail MCP
-      │   └── Returns JSON: {summary, events, urgent_emails, sent_awaiting_reply, focus}
+      ├── build_user_prompt(weather, reminders_ctx) → includes weather, reminders, email urgency criteria
+      ├── get_briefing(weather, reminders_ctx) → Claude Haiku with Calendar + Gmail MCP
+      │   └── Returns JSON: {summary, events, urgent_emails, focus, reminders}
       │                      + week_preview (Mondays only)
       ├── format_briefing(raw, weather) → plain text (falls back to raw if not valid JSON)
       ├── send_imessage() → osascript → Messages → iMessage

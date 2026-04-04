@@ -15,6 +15,8 @@ from pathlib import Path
 
 import anthropic
 
+from shared.reminders import get_reminders
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ def is_allergy_shot_day() -> bool:
 
 # ── Prompt building ───────────────────────────────────────────────────────────
 
-def build_user_prompt(weather: str) -> str:
+def build_user_prompt(weather: str, reminders_ctx: str = "") -> str:
     now = datetime.now()
     today = now.strftime("%A, %B %-d")
     today_iso = now.strftime("%Y-%m-%d")
@@ -141,6 +143,12 @@ def build_user_prompt(weather: str) -> str:
     steps_text = "\n".join(steps)
     fields_text = "\n".join(json_fields)
 
+    reminders_block = ""
+    if reminders_ctx:
+        json_fields.append('  "reminders": list of strings — copy from the reminders provided below (overdue first, then due today); empty list if none')
+        fields_text = "\n".join(json_fields)
+        reminders_block = f"\n\nApple Reminders (already fetched, do NOT use a tool call for these):\n{reminders_ctx}"
+
     return f"""\
 Today is {today} ({today_iso}).{weather_line}
 
@@ -151,7 +159,7 @@ Using my Google Calendar and Gmail ({max_calls} tool calls max):
 Return ONLY a valid JSON object with these keys:
 {fields_text}
 
-Return only valid JSON, no other text.
+Return only valid JSON, no other text.{reminders_block}
 """
 
 
@@ -167,7 +175,7 @@ your response entirely from what you retrieved.
 
 # ── Claude call ───────────────────────────────────────────────────────────────
 
-def get_briefing(weather: str) -> str:
+def get_briefing(weather: str, reminders_ctx: str = "") -> str:
     """Call Claude with MCP servers and return raw response text."""
     client = anthropic.Anthropic()
 
@@ -175,7 +183,7 @@ def get_briefing(weather: str) -> str:
         model=MODEL,
         max_tokens=2048,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_user_prompt(weather)}],
+        messages=[{"role": "user", "content": build_user_prompt(weather, reminders_ctx)}],
         mcp_servers=[
             {
                 "type": "url",
@@ -263,6 +271,16 @@ def format_briefing(raw: str, weather: str) -> str:
             for e in emails:
                 if not _try_append(lines, [f"• {e}"]):
                     break
+
+    # Reminders
+    reminders = data.get("reminders", [])
+    if reminders:
+        rem_sec = ["", "✅ REMINDERS"] + [f"• {r}" for r in reminders]
+        if not _try_append(lines, rem_sec):
+            if _try_append(lines, ["", "✅ REMINDERS"]):
+                for r in reminders:
+                    if not _try_append(lines, [f"• {r}"]):
+                        break
 
     # Allergy shot
     allergy = data.get("allergy_shot", data.get("allergy_shot_reminder", ""))
@@ -355,8 +373,18 @@ def main():
     if weather:
         log.info("Weather: %s", weather)
 
+    reminders_data = get_reminders(datetime.now())
+    reminders_lines = []
+    for r in reminders_data["overdue"]:
+        reminders_lines.append(f"[OVERDUE] {r}")
+    for r in reminders_data["due"]:
+        reminders_lines.append(f"[Due today] {r}")
+    reminders_ctx = "\n".join(reminders_lines) if reminders_lines else ""
+    if reminders_ctx:
+        log.info("Reminders: %d overdue, %d due today", len(reminders_data["overdue"]), len(reminders_data["due"]))
+
     try:
-        raw = get_briefing(weather)
+        raw = get_briefing(weather, reminders_ctx)
         log.info("Received briefing (%d chars raw)", len(raw))
     except Exception as e:
         log.error("API error: %s", e)
