@@ -43,11 +43,14 @@ REQUIRED_BINARIES = ["security", "osascript", "uv", "git"]
 
 REQUIRED_SCRIPTS = [
     "morning_brief.py",
-    "ask_claude.py",
-    "ask_claude.sh",
+    "evening_brief.py",
     "run_morning_brief.sh",
+    "run_evening_brief.sh",
+    "deploy.sh",
     "oauth_setup.py",
+    "check_setup.py",
     "shared/refresh_tokens.py",
+    "shared/reminders.py",
 ]
 
 
@@ -159,7 +162,8 @@ def check_binaries() -> bool:
         result = subprocess.run(
             ["security", "list-keychains"], capture_output=True, text=True
         )
-        if result.returncode != 0 or "keychain" not in result.stdout.lower() + result.stdout.lower():
+        keychain_output = result.stdout.lower() + result.stderr.lower()
+        if result.returncode != 0 or "keychain" not in keychain_output:
             fail(
                 "security binary exists but cannot list keychains.",
                 "Keychain may be locked or unavailable in this environment.",
@@ -321,7 +325,7 @@ def main() -> int:
     if passed:
         print("All checks passed. You're good to go.")
         print("  bash run_morning_brief.sh   # test the morning brief")
-        print("  bash ask_claude.sh \"hello\"  # test interactive chat")
+        print("  bash run_evening_brief.sh   # test the evening brief")
     else:
         print("Some checks failed. Fix the issues above before running the scripts.")
         print("See README.md and TROUBLESHOOTING.md for help.")

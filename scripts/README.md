@@ -92,14 +92,14 @@ Logs:
 `deploy.sh` handles code updates independently from the briefing run:
 
 ```
-deploy.sh (7am cron)
-  ├── git pull origin master
+deploy.sh (6am launchd)
+  ├── git pull origin main
   ├── uv sync (install/update dependencies)
   ├── Log to ~/.morning_brief_deploy.log
   └── On failure: send iMessage notification
 ```
 
-Separating deploy from the briefing means a git network error at 7am won't prevent your 8am brief. The briefing always runs on whatever code is currently on disk.
+Separating deploy from the briefing means a git network error at 6am won't prevent your 7am brief. The briefing always runs on whatever code is currently on disk.
 
 To run a deploy manually:
 
@@ -121,7 +121,7 @@ Then you can say "get my morning brief" in any Claude Code session.
 
 ```
 deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evening_brief.sh (9pm)
-  ├── git pull origin master         ├── Read keys from Keychain           ├── Read keys from Keychain
+  ├── git pull origin main           ├── Read keys from Keychain           ├── Read keys from Keychain
   ├── uv sync                        ├── Refresh Google OAuth tokens        ├── Refresh Google OAuth tokens
   └── log / notify on failure        ├── Read fresh tokens                  ├── Read fresh tokens
                                      └── morning_brief.py                   └── evening_brief.py

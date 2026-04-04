@@ -18,6 +18,10 @@ export PATH="/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$HOME/.morning_brief_deploy.log"
+UV_BIN="${UV_BIN:-uv}"
+GIT_BIN="${GIT_BIN:-git}"
+SECURITY_BIN="${SECURITY_BIN:-security}"
+OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 
 log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_FILE"; }
@@ -26,11 +30,11 @@ on_failure() {
     local exit_code=$?
     log_err "Deploy failed with exit code $exit_code"
     # Best-effort iMessage notification — skip silently if Keychain unavailable
-    IMESSAGE_TARGET="$(security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
+    IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
     local msg="Morning brief deploy failed (exit $exit_code). Check ~/.morning_brief_deploy.log"
     local escaped="${msg//\\/\\\\}"
     escaped="${escaped//\"/\\\"}"
-    osascript -e "
+    "$OSASCRIPT_BIN" -e "
     tell application \"Messages\"
         set targetService to 1st service whose service type = iMessage
         set targetBuddy to buddy \"$IMESSAGE_TARGET\" of targetService
@@ -43,12 +47,12 @@ trap on_failure ERR
 
 log "Starting deploy"
 
-git -C "$SCRIPT_DIR" pull origin main >> "$LOG_FILE" 2>&1 || {
+"$GIT_BIN" -C "$SCRIPT_DIR" pull origin main >> "$LOG_FILE" 2>&1 || {
     log_err "git pull failed"
     exit 1
 }
 
-uv --project "$SCRIPT_DIR" sync >> "$LOG_FILE" 2>&1 || {
+"$UV_BIN" --project "$SCRIPT_DIR" sync >> "$LOG_FILE" 2>&1 || {
     log_err "uv sync failed"
     exit 1
 }

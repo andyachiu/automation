@@ -6,15 +6,12 @@ evening_brief.py — Evening look-ahead briefing sent via iMessage
 import json
 import logging
 import os
-import subprocess
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import anthropic
-
+from shared.briefing_common import call_briefing_model, fetch_weather, parse_json_response
+from shared.briefing_common import send_imessage as _send_imessage
 from shared.reminders import get_reminders
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -31,16 +28,7 @@ MODEL = "claude-haiku-4-5-20251001"
 
 def get_weather() -> str:
     """Fetch one-line weather summary from wttr.in. Returns empty string on failure."""
-    try:
-        req = urllib.request.Request(
-            "https://wttr.in/?format=3&u",
-            headers={"User-Agent": "evening-brief/1.0"},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.read().decode("utf-8").strip()
-    except Exception as e:
-        log.warning("Weather fetch failed: %s", e)
-        return ""
+    return fetch_weather("evening-brief/1.0", log)
 
 
 # ── Prompt building ───────────────────────────────────────────────────────────
@@ -98,36 +86,13 @@ Do not make additional calls. Fetch all data first, then compose your response e
 
 def get_briefing(weather: str, reminders_ctx: str = "") -> str:
     """Call Claude with MCP servers and return raw response text."""
-    client = anthropic.Anthropic()
-
-    response = client.beta.messages.create(
+    return call_briefing_model(
         model=MODEL,
-        max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_user_prompt(weather, reminders_ctx)}],
-        mcp_servers=[
-            {
-                "type": "url",
-                "url": "https://gcal.mcp.claude.com/mcp",
-                "name": "google-calendar",
-                "authorization_token": GCAL_TOKEN,
-            },
-            {
-                "type": "url",
-                "url": "https://gmail.mcp.claude.com/mcp",
-                "name": "gmail",
-                "authorization_token": GMAIL_TOKEN,
-            },
-        ],
-        betas=["mcp-client-2025-04-04"],
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=build_user_prompt(weather, reminders_ctx),
+        gcal_token=GCAL_TOKEN,
+        gmail_token=GMAIL_TOKEN,
     )
-
-    text_parts = [
-        block.text
-        for block in response.content
-        if hasattr(block, "text") and block.text
-    ]
-    return "\n".join(text_parts).strip()
 
 
 # ── Format briefing ───────────────────────────────────────────────────────────
@@ -146,21 +111,9 @@ def format_briefing(raw: str, weather: str) -> str:
     date_str = tomorrow.strftime("%a %b %-d")
     header = f"🌙 Tomorrow, {date_str} | {weather}" if weather else f"🌙 Tomorrow, {date_str}"
 
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start != -1 and end > start:
-            try:
-                data = json.loads(raw[start:end])
-                log.warning("Extracted JSON from mixed-content response")
-            except (json.JSONDecodeError, ValueError):
-                log.warning("Response was not valid JSON, using raw text")
-                return f"{header}\n\n{raw}"
-        else:
-            log.warning("Response was not valid JSON, using raw text")
-            return f"{header}\n\n{raw}"
+    data, fallback = parse_json_response(raw, header=header, log=log)
+    if fallback:
+        return fallback
 
     lines: list[str] = [header]
 
@@ -215,30 +168,7 @@ def format_briefing(raw: str, weather: str) -> str:
 # ── iMessage ──────────────────────────────────────────────────────────────────
 
 def send_imessage(message: str, target: str) -> bool:
-    if not target:
-        log.warning("No IMESSAGE_TARGET set — printing to stdout")
-        print(message)
-        return True
-
-    if len(message) > MAX_MESSAGE_CHARS:
-        message = message[: MAX_MESSAGE_CHARS - 3] + "..."
-
-    escaped = message.replace("\\", "\\\\").replace('"', '\\"')
-
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{target}" of targetService
-        send "{escaped}" to targetBuddy
-    end tell
-    '''
-
-    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
-    if result.returncode != 0:
-        log.error("AppleScript error: %s", result.stderr.strip())
-        return False
-
-    return True
+    return _send_imessage(message, target, max_message_chars=MAX_MESSAGE_CHARS, log=log)
 
 
 def notify_failure(target: str, error: str) -> None:
