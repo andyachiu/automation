@@ -408,7 +408,7 @@ class TestSendIMessage:
         with patch.object(morning_brief, "IMESSAGE_TARGET", ""):
             result = morning_brief.send_imessage("hello", "")
 
-        assert result is True
+        assert result is False
         captured = capsys.readouterr()
         assert "hello" in captured.out
 
