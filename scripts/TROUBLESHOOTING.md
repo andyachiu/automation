@@ -284,6 +284,62 @@ grep -r "master" scripts/*.sh plists/
 
 ---
 
+## Reminders Section Missing from Launchd-Scheduled Briefings
+
+### Symptoms
+
+Manually running `bash run_morning_brief.sh` from a terminal pulls reminders fine — the `✅ REMINDERS` section appears in the brief. But the scheduled launchd run (7am via `com.andychiu.automation.morning-brief.plist`) delivers a brief with no reminders section, and `~/.morning_brief.log` shows:
+
+```
+WARNING Reminders database not found
+```
+
+No Python exception, no TCC prompt, no obvious error — just silently missing.
+
+### Root Cause
+
+macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Two things make this hard to diagnose:
+
+1. **Silent failure.** `Path.glob("*.sqlite")` on a TCC-protected directory returns an **empty iterator** rather than raising — `_find_db()` in `shared/reminders.py` then returns `None` and logs the generic "database not found" message. `STORES_DIR.exists()` still returns `True`, so the early-return guard doesn't catch it.
+
+2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`) or to the python interpreter that actually calls `sqlite3.connect()`. **Neither works.** TCC uses the "responsible process" model: the wrapper runs `uv run python morning_brief.py`, so `uv` is the direct parent that spawns python, and TCC attributes the FDA decision to **uv**. FDA grants on bash or python are silently ignored.
+
+Confirmed via TCC logs:
+
+```
+AttributionChain:
+  responsible={responsible_path=/Users/andychiu/.local/bin/uv}
+  accessing={binary_path=.../cpython-3.13.6/bin/python3.13}
+  ReqResult(Auth Right: Denied (Service Policy))
+```
+
+### How to Diagnose
+
+```bash
+# Trigger the launchd job in its real sandbox (not your terminal's context)
+launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"
+
+# Watch TCC decisions in real time — look for responsible_path and Denied (Service Policy)
+/usr/bin/log show --predicate 'subsystem == "com.apple.TCC"' --debug --info --last 5m \
+  | grep -E "responsible_path|AllFiles|Denied"
+```
+
+The `responsible_path=` field tells you exactly which binary TCC is checking. That's the binary that needs FDA.
+
+### How to Fix
+
+1. System Settings → Privacy & Security → Full Disk Access
+2. Click `+`, press `Cmd+Shift+G`, paste: `/Users/andychiu/.local/bin/uv`
+3. Toggle it on
+4. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
+5. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
+
+### Applies To
+
+Any launchd agent in this project (morning brief, evening brief, allergy shot check) that reads TCC-protected resources (Reminders, Messages, Contacts, Calendar DB, etc.) via `uv run python ...`. The FDA grant on `uv` covers all of them.
+
+---
+
 ## iMessage Plugin Sends Triple Permission Prompts
 
 ### Symptoms
