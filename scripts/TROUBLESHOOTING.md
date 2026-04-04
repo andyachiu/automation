@@ -231,3 +231,93 @@ uv run oauth_setup.py
 1. Re-run `oauth_setup.py` to get a fresh access token for immediate use.
 2. Update `refresh_tokens.py`: check Anthropic's MCP server documentation for the new token endpoint and update the `base_url` or token path in the `MCP_SERVERS` config at the top of the file.
 3. If automated refresh is no longer possible, fall back to the MCP Inspector flow (see "MCP Authentication Error" section) and run `oauth_setup.py` manually when tokens expire (~1 hour TTL).
+
+---
+
+## Deploy Pulls Wrong Branch (`fatal: couldn't find remote ref master`)
+
+### Symptoms
+
+`~/.morning_brief_deploy.log` shows:
+
+```
+fatal: couldn't find remote ref master
+ERROR: git pull failed
+```
+
+Deploy fails silently every day. New commits (features, bug fixes) are never pulled into production. The morning/evening briefs keep running on stale code.
+
+### Root Cause
+
+`deploy.sh` was hardcoded to `git pull origin master`, but the remote branch was renamed to `main`. The `git pull` fails immediately and the trap sends an iMessage notification, but since the brief itself still runs (on old code), the failure is easy to miss.
+
+### How to Diagnose
+
+```bash
+# Check deploy log
+tail -20 ~/.morning_brief_deploy.log
+
+# Check the actual branch name
+cd ~/Code/automation && git branch -vv
+```
+
+### How to Fix
+
+Update `deploy.sh` to match the actual branch name:
+
+```bash
+# In deploy.sh, change:
+git -C "$SCRIPT_DIR" pull origin master
+# To:
+git -C "$SCRIPT_DIR" pull origin main
+```
+
+Then run `bash deploy.sh` manually to catch up on missed commits.
+
+### Prevention
+
+After renaming a branch on GitHub, grep the repo for the old name:
+
+```bash
+grep -r "master" scripts/*.sh plists/
+```
+
+---
+
+## iMessage Plugin Sends Triple Permission Prompts
+
+### Symptoms
+
+Every permission request from Claude Code sends 3 identical `🔐 Permission request` messages to your self-chat. Approving one sends 3 `✅` confirmations back.
+
+### Root Cause
+
+The iMessage plugin's permission request handler (`server.ts`, `notifications/claude/channel/permission_request`) iterates all self-addresses in the `SELF` set and sends to every matching chat GUID:
+
+```typescript
+for (const h of SELF) {
+  for (const { guid } of qChatsForHandle.all(h)) targets.add(guid)
+}
+for (const guid of targets) sendText(guid, text)
+```
+
+`SELF` is populated from `SELECT DISTINCT account FROM message WHERE is_from_me = 1` — a typical iCloud user has 3+ addresses (phone number, iCloud email, alias). Each resolves to a different self-chat GUID, so the same message is sent 3 times.
+
+### How to Fix
+
+Edit `~/.claude/plugins/cache/claude-plugins-official/imessage/0.1.0/server.ts`. Replace the multi-target loop with a single-target send — find the first valid self-chat GUID and send only to that one:
+
+```typescript
+let targetGuid: string | undefined
+for (const h of SELF) {
+  for (const { guid } of qChatsForHandle.all(h)) {
+    targetGuid = guid
+    break
+  }
+  if (targetGuid) break
+}
+```
+
+### Caveats
+
+This file is in the plugin cache. A plugin update will overwrite the fix. The upstream fix belongs in `anthropics/claude-plugins-official`.
