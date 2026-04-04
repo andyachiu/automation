@@ -597,6 +597,7 @@ class TestMorningBriefSkill:
     """Validate the Claude Code morning-brief skill file."""
 
     SKILL_PATH = Path(__file__).parent.parent / ".claude" / "skills" / "morning-brief" / "SKILL.md"
+    TOP_LEVEL_SKILL_PATH = Path(__file__).parent.parent.parent / "skills" / "morning-brief" / "SKILL.md"
 
     def _parse_frontmatter(self):
         """Parse YAML frontmatter from SKILL.md."""
@@ -626,14 +627,19 @@ class TestMorningBriefSkill:
         assert "morning brief" in desc
         assert "morning briefing" in desc
 
-    def test_body_references_run_morning_brief_script(self):
+    def test_body_mentions_imessage_target_keychain(self):
         _, body = self._parse_frontmatter()
-        assert "run_morning_brief.sh" in body, (
-            "Skill body must reference run_morning_brief.sh"
+        assert "morning-brief-imessage-target" in body, (
+            "Skill body must explain how the iMessage target is loaded from Keychain"
         )
 
-    def test_body_references_correct_working_directory(self):
+    def test_body_references_automation_repo_path(self):
         _, body = self._parse_frontmatter()
-        assert "automation/scripts" in body, (
-            "Skill body must reference the automation/scripts directory"
+        assert "/Users/andychiu/Code/automation" in body, (
+            "Skill body must reference the automation repo path"
+        )
+
+    def test_top_level_skill_copy_matches_claude_skill(self):
+        assert self.TOP_LEVEL_SKILL_PATH.read_text() == self.SKILL_PATH.read_text(), (
+            "Top-level and .claude morning-brief skill files must stay in sync."
         )

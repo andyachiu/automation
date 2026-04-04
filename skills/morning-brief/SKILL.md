@@ -5,9 +5,41 @@ description: Run the daily morning briefing script that fetches calendar events 
 
 # Morning Brief
 
-Generate a concise, friendly daily briefing covering calendar, email, weather, and allergy shot status — then deliver it via iMessage.
+Generate a concise, friendly daily briefing covering calendar, email, weather, reminders, and allergy shot status — then deliver it via iMessage.
 
-## Step 1: Gather data (do all four in parallel where possible)
+## Step 1: Gather data (do all in parallel where possible)
+
+### Apple Reminders
+Run this bash command to fetch incomplete reminders:
+```bash
+osascript <<'EOF'
+set output to ""
+tell application "Reminders"
+    repeat with aList in lists
+        set listName to name of aList
+        if listName is not "Groceries" and listName is not "Recently Deleted" then
+            set incompleteReminders to (reminders in aList whose completed is false)
+            repeat with r in incompleteReminders
+                set rName to name of r
+                set rDue to ""
+                try
+                    set dueDate to due date of r
+                    if dueDate is not missing value then
+                        set rDue to (dueDate as string)
+                    end if
+                end try
+                set output to output & listName & "|||" & rName & "|||" & rDue & "\n"
+            end repeat
+        end if
+    end repeat
+end tell
+return output
+EOF
+```
+
+Parse the `|||`-delimited output. For the brief, include:
+- Reminders with a due date that is **today or earlier** — prefix overdue ones with `[OVERDUE]`
+- If none have due dates, show up to 5 reminders without dates
 
 ### Calendar
 Use `gcal_list_events` to pull today's events:
@@ -28,10 +60,11 @@ Triage from the search results (snippets, subjects, senders, and label IDs) with
 - Only call `gmail_read_message` if a subject/snippet is too ambiguous to summarize confidently — don't read every message
 
 ### Weather
-Use the `weather_fetch` tool:
-- `latitude`: `37.7749`
-- `longitude`: `-122.4194`
-- `location_name`: `San Francisco, CA`
+Fetch weather via curl:
+```bash
+curl -s "https://wttr.in/San+Francisco?format=%l:+%c+%t,+High+%h,+%w+wind"
+```
+If it fails, omit the weather section.
 
 ### Allergy shot check
 Use `gcal_list_events` to search for allergy shot appointments in the next 30 days:
@@ -114,19 +147,24 @@ If `mcp__dispatch__start_code_task` is available, dispatch the iMessage send to 
 Then wait for the Code session to complete using `read_transcript` and let the user know whether delivery succeeded.
 
 ### Option B: Running locally (no Dispatch)
-If Dispatch is not available but Bash is, send directly using the same Keychain lookup + `buddy` approach:
+If Dispatch is not available but Bash is, send using **three separate Bash calls** (important — do NOT combine into one compound command, because each must match a permission pattern):
 
+**Call 1** — Read the iMessage target:
 ```bash
-IMESSAGE_TARGET=$(security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)
-echo "$BRIEFING_TEXT" > /tmp/morning_brief_msg.txt
-MSG=$(cat /tmp/morning_brief_msg.txt | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-osascript -e "
-tell application \"Messages\"
-    set targetService to 1st service whose service type = iMessage
-    set targetBuddy to buddy \"$IMESSAGE_TARGET\" of targetService
-    send \"$MSG\" to targetBuddy
-end tell
-"
+security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null
+```
+Save the output as `IMESSAGE_TARGET` for use in Call 3.
+
+**Call 2** — Write the briefing to a temp file (use a heredoc):
+```bash
+cat > /tmp/morning_brief_msg.txt << 'BRIEFEOF'
+[PASTE THE FULL BRIEFING TEXT HERE]
+BRIEFEOF
+```
+
+**Call 3** — Send via osascript (substitute IMESSAGE_TARGET from Call 1):
+```bash
+osascript -e 'set msgText to (do shell script "cat /tmp/morning_brief_msg.txt")' -e 'tell application "Messages"' -e 'set targetService to 1st service whose service type = iMessage' -e 'set targetBuddy to buddy "IMESSAGE_TARGET" of targetService' -e 'send msgText to targetBuddy' -e 'end tell'
 ```
 
 ### Option C: Neither available (e.g., claude.ai)
