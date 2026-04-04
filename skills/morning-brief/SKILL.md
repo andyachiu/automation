@@ -13,7 +13,8 @@ Generate a concise, friendly daily briefing covering calendar, email, weather, r
 Run this bash command to fetch overdue and due-today reminders directly from the macOS Reminders sqlite DB via the project's `shared/reminders.py` module:
 
 ```bash
-cd /Users/andychiu/Code/automation/scripts && uv run python -c "
+AUTOMATION_REPO_ROOT=\$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' \"\${AUTOMATION_REPO_ROOT:-\$HOME/Code/automation}\")
+cd \"\$AUTOMATION_REPO_ROOT/scripts\" && uv run python -c "
 from datetime import datetime
 from shared.reminders import get_reminders
 r = get_reminders(datetime.now())
@@ -22,7 +23,7 @@ for x in r['due']:     print('DUE|||'     + x)
 "
 ```
 
-**Do NOT use `osascript tell application \"Reminders\"`** — it hangs indefinitely under Claude Code (AppleEvents + TCC prompt that never gets answered). The sqlite approach is instant and already works from launchd (FDA is granted on `/Users/andychiu/.local/bin/uv`).
+**Do NOT use `osascript tell application \"Reminders\"`** — it hangs indefinitely under Claude Code (AppleEvents + TCC prompt that never gets answered). The sqlite approach is instant and already works from launchd once Full Disk Access is granted to the `uv` binary you use locally.
 
 Parse the output: lines beginning with `OVERDUE|||` are overdue reminders, `DUE|||` are due today. The module only returns reminders that have a due date — reminders without due dates are intentionally excluded. Prefix overdue items with `[OVERDUE]` in the brief. Omit the REMINDERS section entirely if both lists are empty.
 
@@ -109,7 +110,7 @@ If the Keychain lookup fails, report the error and skip iMessage delivery (the i
 
 ### Option A: Dispatch available
 If `mcp__dispatch__start_code_task` is available, dispatch the iMessage send to the host Mac:
-- `cwd`: `/Users/andychiu/Code/automation`
+- `cwd`: the automation repo root resolved from `AUTOMATION_REPO_ROOT`
 - `title`: `Send morning brief via iMessage`
 - `prompt`:
 

@@ -88,52 +88,58 @@ class TestIsMonday:
 
 class TestBuildUserPrompt:
     def test_includes_weather_when_provided(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("City: 72F sunny")
         assert "City: 72F sunny" in prompt
 
     def test_no_weather_line_when_empty(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "Current weather:" not in prompt
 
     def test_monday_includes_week_preview_json_key(self):
-        with patch("morning_brief.is_monday", return_value=True):
+        with patch("morning_brief.is_monday", return_value=True), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "week_preview" in prompt
 
     def test_non_monday_no_week_preview_json_key(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "week_preview" not in prompt
 
     def test_monday_includes_week_ahead_instruction(self):
-        with patch("morning_brief.is_monday", return_value=True):
+        with patch("morning_brief.is_monday", return_value=True), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "Monday" in prompt or "week-ahead" in prompt or "Mon-Fri" in prompt
 
     def test_email_criteria_direct_recipient(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "To:" in prompt or "directly to you" in prompt
 
-    def test_email_criteria_timeframe(self):
-        with patch("morning_brief.is_monday", return_value=False):
+    def test_weekday_email_criteria_timeframe(self):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "24 hours" in prompt
 
+    def test_weekend_prompt_uses_recent_emails_instead_of_unread_timeframe(self):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=True):
+            prompt = morning_brief.build_user_prompt("")
+        assert "20 most recent emails" in prompt
+        assert "24 hours" not in prompt
+
     def test_email_criteria_excludes_newsletters(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "newsletter" in prompt or "mailing list" in prompt or "automated" in prompt
 
     def test_requests_json_output(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "JSON" in prompt
 
     def test_json_keys_documented(self):
-        with patch("morning_brief.is_monday", return_value=False):
+        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         for key in ("summary", "events", "urgent_emails", "email_highlights", "focus"):
             assert key in prompt

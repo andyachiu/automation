@@ -12,6 +12,12 @@ import sys
 import urllib.parse
 import urllib.request
 
+try:
+    from shared.system import current_user
+except ModuleNotFoundError:
+    # Supports direct execution via `uv run shared/refresh_tokens.py`.
+    from system import current_user
+
 MCP_SERVERS = {
     "gcal": {
         "base_url": "https://gcal.mcp.claude.com",
@@ -31,7 +37,7 @@ MCP_SERVERS = {
 def keychain_get(service: str) -> str | None:
     result = subprocess.run(
         ["security", "find-generic-password", "-a",
-         subprocess.check_output(["whoami"]).decode().strip(),
+         current_user(),
          "-s", service, "-w"],
         capture_output=True, text=True,
     )
@@ -41,7 +47,7 @@ def keychain_get(service: str) -> str | None:
 
 
 def keychain_set(service: str, value: str) -> None:
-    user = subprocess.check_output(["whoami"]).decode().strip()
+    user = current_user()
     result = subprocess.run(
         ["security", "add-generic-password", "-a", user, "-s", service, "-w", value, "-U"],
         capture_output=True,

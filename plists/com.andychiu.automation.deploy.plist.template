@@ -8,11 +8,11 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/andychiu/Code/automation/scripts/deploy.sh</string>
+        <string>{{SCRIPTS_DIR}}/deploy.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/andychiu/Code/automation/scripts</string>
+    <string>{{SCRIPTS_DIR}}</string>
 
     <key>StartCalendarInterval</key>
     <array>
@@ -44,10 +44,10 @@
     </array>
 
     <key>StandardOutPath</key>
-    <string>/Users/andychiu/.morning_brief_deploy.log</string>
+    <string>{{HOME}}/.morning_brief_deploy.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/andychiu/.morning_brief_deploy.log</string>
+    <string>{{HOME}}/.morning_brief_deploy.log</string>
 
     <key>RunAtLoad</key>
     <false/>
@@ -55,9 +55,9 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>{{PATH}}</string>
         <key>HOME</key>
-        <string>/Users/andychiu</string>
+        <string>{{HOME}}</string>
     </dict>
 </dict>
 </plist>

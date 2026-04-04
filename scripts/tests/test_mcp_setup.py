@@ -72,16 +72,13 @@ class TestRegisterClient:
 
 
 class TestKeychainSet:
-    def _mock_whoami(self, name="testuser"):
-        return patch(
-            "subprocess.check_output",
-            return_value=name.encode(),
-        )
+    def _mock_current_user(self, name="testuser"):
+        return patch("oauth_setup.current_user", return_value=name)
 
     def test_update_flag_used_first(self):
         import oauth_setup
 
-        with self._mock_whoami():
+        with self._mock_current_user():
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 oauth_setup.keychain_set("my-service", "my-value")
@@ -92,7 +89,7 @@ class TestKeychainSet:
     def test_fallback_add_on_update_failure(self):
         import oauth_setup
 
-        with self._mock_whoami():
+        with self._mock_current_user():
             with patch("subprocess.run") as mock_run:
                 # First call (update with -U) fails
                 mock_run.side_effect = [
@@ -193,13 +190,13 @@ class TestCallbackHandler:
 # ===========================================================================
 
 class TestKeychainGet:
-    def _mock_whoami(self, name="testuser"):
-        return patch("subprocess.check_output", return_value=name.encode())
+    def _mock_current_user(self, name="testuser"):
+        return patch("shared.refresh_tokens.current_user", return_value=name)
 
     def test_returns_value_on_success(self):
         from shared import refresh_tokens
 
-        with self._mock_whoami():
+        with self._mock_current_user():
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout="mytoken\n")
                 result = refresh_tokens.keychain_get("my-service")
@@ -209,7 +206,7 @@ class TestKeychainGet:
     def test_returns_none_on_failure(self):
         from shared import refresh_tokens
 
-        with self._mock_whoami():
+        with self._mock_current_user():
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=1, stdout="")
                 result = refresh_tokens.keychain_get("missing-service")
@@ -219,7 +216,7 @@ class TestKeychainGet:
     def test_strips_trailing_whitespace(self):
         from shared import refresh_tokens
 
-        with self._mock_whoami():
+        with self._mock_current_user():
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0, stdout="  token-value  \n")
                 result = refresh_tokens.keychain_get("svc")
@@ -635,8 +632,8 @@ class TestMorningBriefSkill:
 
     def test_body_references_automation_repo_path(self):
         _, body = self._parse_frontmatter()
-        assert "/Users/andychiu/Code/automation" in body, (
-            "Skill body must reference the automation repo path"
+        assert "AUTOMATION_REPO_ROOT" in body or "git rev-parse --show-toplevel" in body, (
+            "Skill body must explain how to resolve the automation repo path dynamically"
         )
 
     def test_top_level_skill_copy_matches_claude_skill(self):

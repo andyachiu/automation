@@ -67,12 +67,11 @@ The environment tests check:
 
 ## Schedule Daily Briefings
 
-Scheduling is handled via launchd. Plist files are in `../plists/` — copy them to `~/Library/LaunchAgents/` and load:
+Scheduling is handled via launchd. Render machine-local plist files into `~/Library/LaunchAgents/` and then load them:
 
 ```bash
-cp ../plists/com.andychiu.automation.deploy.plist ~/Library/LaunchAgents/
-cp ../plists/com.andychiu.automation.morning-brief.plist ~/Library/LaunchAgents/
-cp ../plists/com.andychiu.automation.evening-brief.plist ~/Library/LaunchAgents/
+uv run install_launch_agents.py
+
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.deploy.plist
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.morning-brief.plist
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.evening-brief.plist
@@ -93,7 +92,8 @@ Logs:
 
 ```
 deploy.sh (6am launchd)
-  ├── git pull origin main
+  ├── git fetch origin main
+  ├── fast-forward local main only
   ├── uv sync (install/update dependencies)
   ├── Log to ~/.morning_brief_deploy.log
   └── On failure: send iMessage notification
@@ -112,7 +112,7 @@ bash deploy.sh
 This repo includes a `/morning-brief` skill for Claude Code. To make it available globally:
 
 ```bash
-ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief
+ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
 ```
 
 Then you can say "get my morning brief" in any Claude Code session.
@@ -121,7 +121,7 @@ Then you can say "get my morning brief" in any Claude Code session.
 
 ```
 deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evening_brief.sh (9pm)
-  ├── git pull origin main           ├── Read keys from Keychain           ├── Read keys from Keychain
+  ├── git fetch + ff-only merge      ├── Read keys from Keychain           ├── Read keys from Keychain
   ├── uv sync                        ├── Refresh Google OAuth tokens        ├── Refresh Google OAuth tokens
   └── log / notify on failure        ├── Read fresh tokens                  ├── Read fresh tokens
                                      └── morning_brief.py                   └── evening_brief.py

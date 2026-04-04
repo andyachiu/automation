@@ -2,18 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Label: unique identifier for this job -->
     <key>Label</key>
     <string>com.andychiu.allergy-shot-check</string>
 
-    <!-- The script to run -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/check_allergy_shot.sh</string>
+        <string>{{SCRIPTS_DIR}}/allergy-shot-check/check_allergy_shot.sh</string>
     </array>
 
-    <!-- Schedule: Monday (1), Wednesday (3), Friday (5) at 9:00 AM -->
     <key>StartCalendarInterval</key>
     <array>
         <dict>
@@ -42,17 +39,17 @@
         </dict>
     </array>
 
-    <!-- Log output -->
     <key>StandardOutPath</key>
-    <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/allergy_shot_check.log</string>
+    <string>{{SCRIPTS_DIR}}/allergy-shot-check/allergy_shot_check.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/andychiu/Code/automation/scripts/allergy-shot-check/allergy_shot_check.log</string>
+    <string>{{SCRIPTS_DIR}}/allergy-shot-check/allergy_shot_check.log</string>
 
-    <!-- Environment (ensure claude CLI is on PATH) -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/Users/andychiu/.npm-global/bin</string>
+        <string>{{PATH}}</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
     </dict>
 </dict>
 </plist>

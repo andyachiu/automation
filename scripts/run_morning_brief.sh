@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Wrapper that refreshes OAuth tokens and runs morning_brief.py
-# Code updates are handled separately by deploy.sh (runs at 7am).
+# Code updates are handled separately by deploy.sh (runs at 6am).
 #
 # First-time setup:
 #   1. Store your Anthropic key and iMessage target:
@@ -10,18 +10,20 @@
 #   2. Run OAuth setup to authorize Google Calendar & Gmail:
 #        uv run oauth_setup.py
 #   3. Schedule (see README for both cron entries):
-#        0 7 * * 1-5 /path/to/deploy.sh
-#        0 8 * * 1-5 /path/to/run_morning_brief.sh
+#        0 6 * * 1-5 /path/to/deploy.sh
+#        0 7 * * 1-5 /path/to/run_morning_brief.sh
 #
 set -euo pipefail
 
-export PATH="/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+automation_setup_path
+
 LOG_FILE="$HOME/.morning_brief.log"
 UV_BIN="${UV_BIN:-uv}"
 SECURITY_BIN="${SECURITY_BIN:-security}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
+KEYCHAIN_USER="$(automation_current_user)"
 
 log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }
@@ -52,13 +54,13 @@ trap on_failure ERR
 log "Starting run_morning_brief.sh"
 
 # Retrieve Anthropic API key
-ANTHROPIC_API_KEY="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w 2>/dev/null)" || {
+ANTHROPIC_API_KEY="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-anthropic-key" -w 2>/dev/null)" || {
     log_err "Could not read 'morning-brief-anthropic-key' from Keychain."
     log_err "Run: security add-generic-password -a \"\$USER\" -s \"morning-brief-anthropic-key\" -w \"sk-ant-...\""
     exit 1
 }
 
-IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || {
+IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || {
     log_err "Could not read 'morning-brief-imessage-target' from Keychain."
     log_err "Run: security add-generic-password -a \"\$USER\" -s \"morning-brief-imessage-target\" -w \"+15551234567\""
     exit 1
@@ -75,12 +77,12 @@ log "Refreshing OAuth tokens..."
 }
 
 # Read fresh tokens from Keychain (shared/refresh_tokens.py just updated them)
-GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
+GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
     log_err "No gcal token after refresh. Re-run: uv run oauth_setup.py"
     exit 1
 }
 
-GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
+GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
     log_err "No gmail token after refresh. Re-run: uv run oauth_setup.py"
     exit 1
 }
@@ -109,11 +111,11 @@ log "Refreshing OAuth tokens (retry)..."
     exit 1
 }
 
-GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
+GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
     log_err "No gcal token after retry refresh."
     exit 1
 }
-GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
+GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
     log_err "No gmail token after retry refresh."
     exit 1
 }

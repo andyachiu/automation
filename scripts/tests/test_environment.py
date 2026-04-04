@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import getpass
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,7 @@ REQUIRED_SCRIPTS = [
     "run_morning_brief.sh",
     "run_evening_brief.sh",
     "deploy.sh",
+    "install_launch_agents.py",
     "oauth_setup.py",
     "shared/refresh_tokens.py",
     "shared/reminders.py",
@@ -153,7 +155,7 @@ class TestScriptPaths:
         name = config.get("project", {}).get("name")
         assert name == "automation-scripts", (
             f"pyproject.toml project name is {name!r}, expected 'automation-scripts'.\n"
-            "Wrong directory — run from ~/Code/automation/scripts/."
+            f"Wrong directory — run from {SCRIPTS_DIR}."
         )
 
     @pytest.mark.parametrize("script", REQUIRED_SCRIPTS)
@@ -161,7 +163,7 @@ class TestScriptPaths:
         path = SCRIPTS_DIR / script
         assert path.exists(), (
             f"Required script not found: {path}\n"
-            "Ensure you have the full repo checked out at ~/Code/automation/scripts/."
+            f"Ensure you have the full repo checked out at {SCRIPTS_DIR}."
         )
 
     def test_skill_file_exists(self):
@@ -178,7 +180,7 @@ class TestScriptPaths:
             pytest.skip("Global skill symlink not yet created — run setup step 7 in README.")
         assert global_skill.exists(), (
             f"~/.claude/skills/morning-brief symlink is broken: {global_skill} -> {os.readlink(global_skill)}\n"
-            "Fix with: ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief"
+            f"Fix with: ln -sf {SCRIPTS_DIR / '.claude' / 'skills' / 'morning-brief'} ~/.claude/skills/morning-brief"
         )
         assert (global_skill / "SKILL.md").exists(), (
             "Global skill symlink exists but SKILL.md is missing at the destination."
@@ -196,7 +198,7 @@ def _keychain_get(service: str) -> str | None:
         [
             "security",
             "find-generic-password",
-            "-a", os.environ.get("USER", ""),
+            "-a", os.environ.get("USER") or getpass.getuser(),
             "-s", service,
             "-w",
         ],

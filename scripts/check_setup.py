@@ -26,6 +26,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from shared.system import current_user
+
 SCRIPTS_DIR = Path(__file__).parent
 
 KEYCHAIN_ENTRIES = {
@@ -47,6 +49,7 @@ REQUIRED_SCRIPTS = [
     "run_morning_brief.sh",
     "run_evening_brief.sh",
     "deploy.sh",
+    "install_launch_agents.py",
     "oauth_setup.py",
     "check_setup.py",
     "shared/refresh_tokens.py",
@@ -90,7 +93,7 @@ def section(title: str) -> None:
 
 def keychain_get(service: str) -> str | None:
     result = subprocess.run(
-        ["security", "find-generic-password", "-a", os.environ.get("USER", ""), "-s", service, "-w"],
+        ["security", "find-generic-password", "-a", current_user(), "-s", service, "-w"],
         capture_output=True,
         text=True,
     )
@@ -204,7 +207,7 @@ def check_scripts() -> bool:
         else:
             fail(
                 f"pyproject.toml project name is {name!r} (expected 'automation-scripts').",
-                "Wrong directory. Run from ~/Code/automation/scripts/.",
+                f"Wrong directory. Run from {SCRIPTS_DIR}.",
             )
             passed = False
     else:
@@ -229,20 +232,21 @@ def check_scripts() -> bool:
 
     # Global symlink (optional)
     global_skill = Path.home() / ".claude" / "skills" / "morning-brief"
+    skill_source = SCRIPTS_DIR / ".claude" / "skills" / "morning-brief"
     if global_skill.is_symlink():
         if global_skill.exists():
             ok(f"Global skill symlink valid (~/.claude/skills/morning-brief -> {os.readlink(global_skill)})")
         else:
             fail(
                 f"Global skill symlink is broken: ~/.claude/skills/morning-brief -> {os.readlink(global_skill)}",
-                "Fix with:\n  ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief",
+                f"Fix with:\n  ln -sf {skill_source} ~/.claude/skills/morning-brief",
             )
             passed = False
     else:
         warn(
             "Global skill symlink not created yet (skill only works inside this project dir).\n"
             "       To enable /morning-brief from any Claude Code session:\n"
-            "         ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief"
+            f"         ln -sf {skill_source} ~/.claude/skills/morning-brief"
         )
 
     return passed

@@ -3,61 +3,61 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.andychiu.automation.evening-brief</string>
+    <string>com.andychiu.automation.morning-brief</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/andychiu/Code/automation/scripts/run_evening_brief.sh</string>
+        <string>{{SCRIPTS_DIR}}/run_morning_brief.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/andychiu/Code/automation/scripts</string>
+    <string>{{SCRIPTS_DIR}}</string>
 
     <key>StartCalendarInterval</key>
     <array>
         <dict>
             <key>Weekday</key><integer>0</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>9</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>1</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>7</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>2</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>7</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>3</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>7</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>4</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>7</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>5</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>7</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
         <dict>
             <key>Weekday</key><integer>6</integer>
-            <key>Hour</key><integer>21</integer>
+            <key>Hour</key><integer>9</integer>
             <key>Minute</key><integer>0</integer>
         </dict>
     </array>
 
     <key>StandardOutPath</key>
-    <string>/Users/andychiu/.evening_brief.log</string>
+    <string>{{HOME}}/.morning_brief.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/andychiu/.evening_brief.log</string>
+    <string>{{HOME}}/.morning_brief.log</string>
 
     <key>RunAtLoad</key>
     <false/>
@@ -65,9 +65,9 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>{{PATH}}</string>
         <key>HOME</key>
-        <string>/Users/andychiu</string>
+        <string>{{HOME}}</string>
     </dict>
 </dict>
 </plist>

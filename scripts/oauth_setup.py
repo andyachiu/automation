@@ -18,6 +18,8 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
+from shared.system import current_user
+
 MCP_SERVERS = {
     "gcal": {
         "base_url": "https://gcal.mcp.claude.com",
@@ -38,16 +40,15 @@ REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback"
 
 
 def keychain_set(service: str, value: str) -> None:
+    user = current_user()
     # Try update first, then add
     result = subprocess.run(
-        ["security", "add-generic-password", "-a", subprocess.check_output(
-            ["whoami"]).decode().strip(), "-s", service, "-w", value, "-U"],
+        ["security", "add-generic-password", "-a", user, "-s", service, "-w", value, "-U"],
         capture_output=True,
     )
     if result.returncode != 0:
         subprocess.run(
-            ["security", "add-generic-password", "-a", subprocess.check_output(
-                ["whoami"]).decode().strip(), "-s", service, "-w", value],
+            ["security", "add-generic-password", "-a", user, "-s", service, "-w", value],
             check=True,
         )
 

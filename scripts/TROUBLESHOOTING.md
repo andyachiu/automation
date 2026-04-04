@@ -50,7 +50,7 @@ uv run pytest tests/test_environment.py -v
 1. Run scripts directly in your local terminal, not inside any container or remote session.
 2. For the Claude Code skill: ensure the skill is symlinked globally so it runs via your local shell:
    ```bash
-   ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief
+   ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
    ```
 3. Verify Claude Code has permission to run shell commands (check `.claude/settings.local.json`).
 
@@ -258,18 +258,20 @@ Deploy fails silently every day. New commits (features, bug fixes) are never pul
 tail -20 ~/.morning_brief_deploy.log
 
 # Check the actual branch name
-cd ~/Code/automation && git branch -vv
+git -C "$(git rev-parse --show-toplevel)" branch -vv
 ```
 
 ### How to Fix
 
-Update `deploy.sh` to match the actual branch name:
+Update `deploy.sh` to fetch and fast-forward the actual branch name:
 
 ```bash
 # In deploy.sh, change:
-git -C "$SCRIPT_DIR" pull origin master
+git -C "$REPO_ROOT" fetch origin master
+git -C "$REPO_ROOT" merge --ff-only origin/master
 # To:
-git -C "$SCRIPT_DIR" pull origin main
+git -C "$REPO_ROOT" fetch origin main
+git -C "$REPO_ROOT" merge --ff-only origin/main
 ```
 
 Then run `bash deploy.sh` manually to catch up on missed commits.
@@ -308,7 +310,7 @@ Confirmed via TCC logs:
 
 ```
 AttributionChain:
-  responsible={responsible_path=/Users/andychiu/.local/bin/uv}
+  responsible={responsible_path=$HOME/.local/bin/uv}
   accessing={binary_path=.../cpython-3.13.6/bin/python3.13}
   ReqResult(Auth Right: Denied (Service Policy))
 ```
@@ -329,7 +331,7 @@ The `responsible_path=` field tells you exactly which binary TCC is checking. Th
 ### How to Fix
 
 1. System Settings → Privacy & Security → Full Disk Access
-2. Click `+`, press `Cmd+Shift+G`, paste: `/Users/andychiu/.local/bin/uv`
+2. Click `+`, press `Cmd+Shift+G`, paste the absolute path to your local `uv` binary, for example: `$HOME/.local/bin/uv`
 3. Toggle it on
 4. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
 5. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`

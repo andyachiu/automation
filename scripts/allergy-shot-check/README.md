@@ -14,7 +14,7 @@ and reminds you on Mon/Wed/Fri if you don't have one in the next 30 days.
 ## Test
 
 ```bash
-bash ~/Code/automation/scripts/allergy-shot-check/check_allergy_shot.sh
+bash ./check_allergy_shot.sh
 ```
 
 ## Manage
@@ -24,7 +24,7 @@ bash ~/Code/automation/scripts/allergy-shot-check/check_allergy_shot.sh
 launchctl list | grep allergy
 
 # View logs
-tail -f ~/Code/automation/scripts/allergy-shot-check/allergy_shot_check.log
+tail -f ./allergy_shot_check.log
 
 # Reload after editing plist
 launchctl unload ~/Library/LaunchAgents/com.andychiu.allergy-shot-check.plist

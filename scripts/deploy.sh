@@ -14,14 +14,18 @@
 #
 set -euo pipefail
 
-export PATH="/Users/andychiu/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+automation_setup_path
+
 LOG_FILE="$HOME/.morning_brief_deploy.log"
 UV_BIN="${UV_BIN:-uv}"
 GIT_BIN="${GIT_BIN:-git}"
 SECURITY_BIN="${SECURITY_BIN:-security}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
+AUTOMATION_GIT_BRANCH="${AUTOMATION_GIT_BRANCH:-main}"
+KEYCHAIN_USER="$(automation_current_user)"
 
 log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_FILE"; }
@@ -30,7 +34,7 @@ on_failure() {
     local exit_code=$?
     log_err "Deploy failed with exit code $exit_code"
     # Best-effort iMessage notification — skip silently if Keychain unavailable
-    IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
+    IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
     local msg="Morning brief deploy failed (exit $exit_code). Check ~/.morning_brief_deploy.log"
     local escaped="${msg//\\/\\\\}"
     escaped="${escaped//\"/\\\"}"
@@ -47,8 +51,24 @@ trap on_failure ERR
 
 log "Starting deploy"
 
-"$GIT_BIN" -C "$SCRIPT_DIR" pull origin main >> "$LOG_FILE" 2>&1 || {
-    log_err "git pull failed"
+current_branch="$("$GIT_BIN" -C "$REPO_ROOT" branch --show-current)"
+if [[ "$current_branch" != "$AUTOMATION_GIT_BRANCH" ]]; then
+    log_err "Refusing deploy: current branch is '$current_branch', expected '$AUTOMATION_GIT_BRANCH'"
+    exit 1
+fi
+
+if [[ -n "$("$GIT_BIN" -C "$REPO_ROOT" status --porcelain)" ]]; then
+    log_err "Refusing deploy: repo has uncommitted changes"
+    exit 1
+fi
+
+"$GIT_BIN" -C "$REPO_ROOT" fetch origin "$AUTOMATION_GIT_BRANCH" >> "$LOG_FILE" 2>&1 || {
+    log_err "git fetch failed"
+    exit 1
+}
+
+"$GIT_BIN" -C "$REPO_ROOT" merge --ff-only "origin/$AUTOMATION_GIT_BRANCH" >> "$LOG_FILE" 2>&1 || {
+    log_err "fast-forward merge failed"
     exit 1
 }
 

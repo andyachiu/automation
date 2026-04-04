@@ -172,17 +172,15 @@ uv run oauth_setup.py
 # 5. Test the morning brief
 bash run_morning_brief.sh
 
-# 6. Install launchd agents (weekdays: deploy at 7am, brief at 8am)
-# Plist files are in automation/plists/
-cp ~/Code/automation/plists/com.andychiu.automation.deploy.plist ~/Library/LaunchAgents/
-cp ~/Code/automation/plists/com.andychiu.automation.morning-brief.plist ~/Library/LaunchAgents/
+# 6. Install launchd agents (weekdays: deploy at 6am, brief at 7am)
+uv run install_launch_agents.py
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.deploy.plist
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.morning-brief.plist
 # Verify both are loaded:
 # launchctl list | grep andychiu
 
 # 7. (Optional) Enable the /morning-brief Claude Code skill globally
-ln -sf ~/Code/automation/scripts/.claude/skills/morning-brief ~/.claude/skills/morning-brief
+ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
 ```
 
 ---
