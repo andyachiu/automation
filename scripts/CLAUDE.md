@@ -117,7 +117,10 @@ run_morning_brief.sh
       │   └── Returns JSON: {summary, events, urgent_emails, focus, reminders}
       │                      + week_preview (Mondays only)
       ├── format_briefing(raw, weather) → plain text (falls back to raw if not valid JSON)
-      ├── send_imessage() → osascript → Messages → iMessage
+      ├── send_imessage() → BlastDoor pre-flight (pgrep) → osascript → Messages → iMessage
+      │   └── If >1 MessagesBlastDoorService instances detected, fails fast with recovery
+      │       instructions instead of waiting on a 30s AppleEvent timeout (Tahoe regression).
+      │       See TROUBLESHOOTING.md "iMessage Send Hangs on macOS Tahoe".
       └── On failure: notify_failure() sends short error iMessage
 ```
 
