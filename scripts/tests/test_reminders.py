@@ -59,6 +59,16 @@ class TestFindDb:
         with patch("shared.reminders.STORES_DIR", Path("/nonexistent")):
             assert _find_db() is None
 
+    def test_returns_none_and_logs_actionable_error_on_permission_denied(self, caplog):
+        # Simulate TCC denying directory listing — the failure mode that occurs
+        # when Full Disk Access on the uv binary has gone stale after an upgrade.
+        mock_dir = MagicMock()
+        mock_dir.iterdir.side_effect = PermissionError("Operation not permitted")
+        with patch("shared.reminders.STORES_DIR", mock_dir), caplog.at_level("ERROR"):
+            assert _find_db() is None
+        assert "Full Disk Access" in caplog.text
+        assert "System Settings" in caplog.text
+
     def test_picks_db_with_most_incomplete(self, tmp_path):
         # DB A: 1 incomplete reminder
         db_a = tmp_path / "A.sqlite"

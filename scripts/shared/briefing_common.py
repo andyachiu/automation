@@ -135,6 +135,26 @@ def parse_json_response(
         return None, f"{header}\n\n{raw}"
 
 
+def _blastdoor_pid_count() -> int:
+    """Return the number of running MessagesBlastDoorService instances.
+
+    Healthy state on macOS Tahoe is 0 or 1. On macOS 26.x there is a regression
+    where workers from prior Messages sessions don't get reaped, and once they
+    pile up Messages.app stops servicing AppleEvents (osascript hangs with -1712).
+    Returns -1 if the probe itself fails.
+    """
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "MessagesBlastDoorService"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return -1
+    if result.returncode not in (0, 1):  # 1 = no matches, valid
+        return -1
+    return len([line for line in result.stdout.splitlines() if line.strip()])
+
+
 def send_imessage(
     message: str,
     target: str,
@@ -147,6 +167,18 @@ def send_imessage(
         log.warning("No IMESSAGE_TARGET set — printing to stdout")
         print(message)
         return True
+
+    pid_count = _blastdoor_pid_count()
+    if pid_count > 1:
+        log.error(
+            "Skipping iMessage send: %d MessagesBlastDoorService instances detected (healthy is ≤1). "
+            "Messages.app is wedged and the AppleEvent will time out with -1712. "
+            "Recovery: force-quit Messages.app via Activity Monitor (killall fails under SIP because "
+            "MessagesBlastDoorService is an Apple-signed XPC service), then relaunch Messages.app. "
+            "Verify with: pgrep -lf MessagesBlastDoorService (should show 0–1 PIDs).",
+            pid_count,
+        )
+        return False
 
     if len(message) > max_message_chars:
         message = message[: max_message_chars - 3] + "..."

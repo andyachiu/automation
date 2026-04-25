@@ -3,7 +3,9 @@ Read incomplete reminders from the macOS Reminders SQLite database.
 """
 
 import logging
+import shutil
 import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -13,12 +15,45 @@ STORES_DIR = Path.home() / "Library/Group Containers/group.com.apple.reminders/C
 CORE_DATA_EPOCH = 978307200  # 2001-01-01 in Unix time
 
 
+def _tcc_candidate_paths() -> list[str]:
+    """Binaries that TCC may attribute Reminders DB access to, in order of likelihood.
+
+    TCC's "responsible process" is the parent that spawned python — typically `uv`
+    in this project (see CLAUDE.md), but plain `python script.py` would attribute
+    to sys.executable. We can't detect the actual responsible process without
+    walking /proc-equivalent, so list both candidates and let the user pick.
+    """
+    paths: list[str] = []
+    uv = shutil.which("uv")
+    if uv and uv not in paths:
+        paths.append(uv)
+    if sys.executable and sys.executable not in paths:
+        paths.append(sys.executable)
+    return paths
+
+
 def _find_db() -> Path | None:
-    if not STORES_DIR.exists():
+    try:
+        entries = list(STORES_DIR.iterdir())
+    except FileNotFoundError:
+        log.warning("Reminders store dir does not exist: %s", STORES_DIR)
         return None
+    except PermissionError:
+        # TCC denied directory listing. Path.glob() would silently swallow this
+        # and return []; iterdir() raises so we can surface an actionable error.
+        candidates = " or ".join(_tcc_candidate_paths())
+        log.error(
+            "Permission denied reading %s — Full Disk Access grant is missing or stale. "
+            "Fix: System Settings → Privacy & Security → Full Disk Access → remove and re-add %s "
+            "(whichever was actually used to launch this script). "
+            "TCC keys grants by binary signature, so any upgrade silently invalidates the existing entry.",
+            STORES_DIR, candidates,
+        )
+        return None
+
     best, best_count = None, 0
-    for db_path in STORES_DIR.glob("*.sqlite"):
-        if "-shm" in db_path.name or "-wal" in db_path.name:
+    for db_path in entries:
+        if db_path.suffix != ".sqlite":
             continue
         try:
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
