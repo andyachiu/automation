@@ -12,6 +12,8 @@ scripts/.conversation_history.json
 
 # Claude Code internal state
 scripts/.claude/worktrees/
+.claude/worktrees/
+.claude/settings.local.json
 
 # macOS
 .DS_Store

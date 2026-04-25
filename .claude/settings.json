@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(log show:*)",
+      "Bash(security find-generic-password:*)",
+      "Bash(sw_vers:*)"
+    ]
+  }
+}
