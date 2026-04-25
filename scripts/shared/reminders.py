@@ -3,7 +3,9 @@ Read incomplete reminders from the macOS Reminders SQLite database.
 """
 
 import logging
+import shutil
 import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -13,11 +15,39 @@ STORES_DIR = Path.home() / "Library/Group Containers/group.com.apple.reminders/C
 CORE_DATA_EPOCH = 978307200  # 2001-01-01 in Unix time
 
 
+def _tcc_responsible_path() -> str:
+    """Best-effort guess at the binary TCC attributes Reminders DB access to.
+
+    Under `uv run`, TCC's responsible process is the `uv` binary (not python).
+    Used only to make the Full Disk Access error message actionable.
+    """
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+    return sys.executable
+
+
 def _find_db() -> Path | None:
-    if not STORES_DIR.exists():
+    try:
+        entries = list(STORES_DIR.iterdir())
+    except FileNotFoundError:
+        log.warning("Reminders store dir does not exist: %s", STORES_DIR)
         return None
+    except PermissionError:
+        # TCC denied directory listing. Path.glob() would silently swallow this
+        # and return []; iterdir() raises so we can surface an actionable error.
+        log.error(
+            "Permission denied reading %s — Full Disk Access grant on %s is missing or stale. "
+            "Fix: System Settings → Privacy & Security → Full Disk Access → remove and re-add %s. "
+            "TCC keys grants by binary signature, so any uv upgrade silently invalidates the existing entry.",
+            STORES_DIR, _tcc_responsible_path(), _tcc_responsible_path(),
+        )
+        return None
+
     best, best_count = None, 0
-    for db_path in STORES_DIR.glob("*.sqlite"):
+    for db_path in entries:
+        if db_path.suffix != ".sqlite":
+            continue
         if "-shm" in db_path.name or "-wal" in db_path.name:
             continue
         try:

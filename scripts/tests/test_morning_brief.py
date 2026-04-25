@@ -228,6 +228,13 @@ class TestFormatBriefing:
 # ── send_imessage ─────────────────────────────────────────────────────────────
 
 class TestSendImessage:
+    @pytest.fixture(autouse=True)
+    def _stub_blastdoor(self):
+        # Default: BlastDoor healthy (0 instances) so pre-flight doesn't short-circuit.
+        # Individual tests can override by patching directly.
+        with patch("shared.briefing_common._blastdoor_pid_count", return_value=0):
+            yield
+
     def test_returns_true_on_success(self):
         with patch("subprocess.run", return_value=MagicMock(returncode=0)):
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
@@ -246,6 +253,33 @@ class TestSendImessage:
         with patch("subprocess.run") as mock_run:
             morning_brief.send_imessage("Hello", "")
         mock_run.assert_not_called()
+
+    def test_returns_false_when_blastdoor_wedged(self):
+        mock_log = MagicMock()
+        with patch("shared.briefing_common._blastdoor_pid_count", return_value=3), \
+             patch("subprocess.run") as mock_run, \
+             patch("morning_brief.log", mock_log):
+            assert morning_brief.send_imessage("Hello", "+15551234567") is False
+        mock_run.assert_not_called()  # osascript must NOT be invoked
+        # Verify the actionable message was logged.
+        error_calls = [c for c in mock_log.error.call_args_list]
+        assert error_calls, "expected an error log when BlastDoor is wedged"
+        msg = error_calls[0][0][0]
+        assert "MessagesBlastDoorService" in msg
+        assert "Activity Monitor" in msg
+
+    def test_send_proceeds_when_blastdoor_count_is_one(self):
+        with patch("shared.briefing_common._blastdoor_pid_count", return_value=1), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            assert morning_brief.send_imessage("Hello", "+15551234567") is True
+        mock_run.assert_called_once()  # osascript was invoked
+
+    def test_send_proceeds_when_pgrep_probe_fails(self):
+        # If the pgrep probe itself errors (returns -1), don't block sends.
+        with patch("shared.briefing_common._blastdoor_pid_count", return_value=-1), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            assert morning_brief.send_imessage("Hello", "+15551234567") is True
+        mock_run.assert_called_once()
 
     def test_truncates_to_max_chars(self):
         long_msg = "x" * 2000
