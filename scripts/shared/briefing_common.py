@@ -172,9 +172,10 @@ def send_imessage(
     if pid_count > 1:
         log.error(
             "Skipping iMessage send: %d MessagesBlastDoorService instances detected (healthy is ≤1). "
-            "Messages.app is wedged and the AppleEvent will time out (-1712). "
-            "Fix: force-quit Messages.app via Activity Monitor (killall fails under SIP), then relaunch it. "
-            "See project_messages_blastdoor_tahoe memory.",
+            "Messages.app is wedged and the AppleEvent will time out with -1712. "
+            "Recovery: force-quit Messages.app via Activity Monitor (killall fails under SIP because "
+            "MessagesBlastDoorService is an Apple-signed XPC service), then relaunch Messages.app. "
+            "Verify with: pgrep -lf MessagesBlastDoorService (should show 0–1 PIDs).",
             pid_count,
         )
         return False
