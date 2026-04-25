@@ -389,7 +389,7 @@ osascript -e 'with timeout of 5 seconds' \
           -e 'end timeout'
 ```
 
-If `pgrep` shows >1 PID, BlastDoor is wedged. The pre-flight in `shared/briefing_common.send_imessage` runs this same check before every send.
+If `pgrep` shows >1 PID, BlastDoor is wedged. The pre-flight in `send_imessage()` (in `shared/briefing_common.py`) runs this same check before every send.
 
 ### How to Fix
 

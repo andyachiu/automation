@@ -120,7 +120,7 @@ run_morning_brief.sh
       ├── send_imessage() → BlastDoor pre-flight (pgrep) → osascript → Messages → iMessage
       │   └── If >1 MessagesBlastDoorService instances detected, fails fast with recovery
       │       instructions instead of waiting on a 30s AppleEvent timeout (Tahoe regression).
-      │       See TROUBLESHOOTING.md "iMessage Send Hangs on macOS Tahoe".
+      │       See [TROUBLESHOOTING.md "iMessage Send Hangs on macOS Tahoe (BlastDoor Pile-Up)"](TROUBLESHOOTING.md#imessage-send-hangs-on-macos-tahoe-blastdoor-pile-up).
       └── On failure: notify_failure() sends short error iMessage
 ```
 
