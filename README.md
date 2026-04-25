@@ -2,10 +2,34 @@
 
 macOS automation scripts using Claude AI, Google Calendar, and Gmail.
 
+## TODO / Ideas
+
+Running list of capabilities to build out next. Newest at the top.
+
+- [ ] **Obsidian note-taking integration**
+  - [ ] Vault path + config: resolve vault location from env (`OBSIDIAN_VAULT`) with sane macOS default; store in `scripts/config.py` alongside other paths
+  - [ ] Decide access layer: direct filesystem read/write (simpler, no daemon) vs. Obsidian Local REST API plugin (richer: open note, run commands) — start with filesystem, revisit if we need live UI actions
+  - [ ] Daily-note helpers: locate/create today's daily note from the vault's daily-note template, append-section primitive (`append_to_section(note, heading, body)`) that respects existing headings
+  - [ ] Brief → daily note: morning + evening briefs append a dated block to today's daily note in addition to iMessage delivery
+  - [ ] Search + read: wrap `ripgrep` over the vault for full-text search; expose `read_note(path)` and `list_notes(folder)` helpers
+  - [ ] Frontmatter + tags: parse/write YAML frontmatter so generated notes get consistent tags (`#brief/morning`, `#source/automation`)
+  - [ ] Link graph queries: resolve `[[wikilinks]]` and backlinks; helper to list notes linking to a given note (for context gathering)
+  - [ ] Note drafting from chat: capture-style script that takes a transcript or prompt and writes a new note under `Inbox/` with frontmatter + a link back to the source
+  - [ ] Tests: fixture vault under `scripts/tests/fixtures/vault/` so all of the above can run without touching the real vault
+- [ ]
+
 ## What's Here
 
 - **Morning brief** — Daily calendar + email summary delivered via iMessage at 7 AM on weekdays
 - **Evening brief** — Next-day look-ahead with pending email reminders, delivered at 9 PM daily
+
+## Latest Updates
+
+- **Shared Claude Code settings tracked** (#9) — project `.claude/settings.json` is checked in; local overrides and worktrees stay ignored
+- **Loud-failure paths documented** (#8) — troubleshooting guide for the failure modes surfaced in #7
+- **Fail loud on stale TCC + wedged BlastDoor** (#7) — launchd agents now exit non-zero instead of silently dropping briefs when macOS permissions or iMessage delivery are broken
+- **Direct Google API path** (#6) — briefs can hit Calendar/Gmail directly via OAuth; remote MCP servers are now opt-in
+- **Portability + launchd hardening** (eb300c0) — `install_launch_agents.py` renders machine-local plists so the repo works across machines without hand-edits
 
 ## Structure
 
