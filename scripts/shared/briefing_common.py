@@ -57,6 +57,47 @@ def call_briefing_model(
         betas=["mcp-client-2025-04-04"],
     )
 
+    failed = [
+        b for b in response.content
+        if getattr(b, "type", "") == "mcp_tool_result" and getattr(b, "is_error", False)
+    ]
+    if failed:
+        raise RuntimeError(f"{len(failed)} MCP tool call(s) returned is_error")
+
+    text_parts = [
+        block.text
+        for block in response.content
+        if hasattr(block, "text") and block.text
+    ]
+    return "\n".join(text_parts).strip()
+
+
+def call_briefing_model_direct(
+    *,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    calendar_data: list[dict],
+    email_data: list[dict],
+) -> str:
+    """Call Claude with prefetched data appended to the prompt — no MCP, no tools."""
+    client = anthropic.Anthropic()
+
+    context = (
+        "\n\nCalendar events (already fetched, do NOT call any tools):\n"
+        f"{json.dumps(calendar_data, indent=2, default=str)}\n\n"
+        "Recent unread emails (already fetched, do NOT call any tools):\n"
+        f"{json.dumps(email_data, indent=2, default=str)}\n"
+    )
+    full_prompt = user_prompt + context
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=2048,
+        system=system_prompt,
+        messages=[{"role": "user", "content": full_prompt}],
+    )
+
     text_parts = [
         block.text
         for block in response.content
