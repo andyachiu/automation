@@ -306,7 +306,7 @@ macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Conta
 
 2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`) or to the python interpreter that actually calls `sqlite3.connect()`. **Neither works.** TCC uses the "responsible process" model: the wrapper runs `uv run python morning_brief.py`, so `uv` is the direct parent that spawns python, and TCC attributes the FDA decision to **uv**. FDA grants on bash or python are silently ignored.
 
-3. **Grants go stale on uv upgrade.** TCC keys FDA grants by binary signature, not by path. Whenever `uv` is replaced (`uv self update`, brew upgrade, manual reinstall), the entry for `/Users/<you>/.local/bin/uv` still appears in System Settings but is silently invalidated. The fix is to remove and re-add the same path. Confirmed 2026-04-25: reminders fetch broke ~8 months after a 2025-08-14 uv upgrade.
+3. **Grants go stale on uv upgrade.** TCC keys FDA grants by binary signature, not by path. Whenever `uv` is replaced (`uv self update`, brew upgrade, manual reinstall), the entry for `/Users/<you>/.local/bin/uv` still appears in System Settings but is silently invalidated. The fix is to **fully remove (the `−` button) and re-add** the same path — toggling the existing entry off and back on is **not** sufficient, because the toggle only flips the active flag on the same stale signature record; only `−` then `+` causes TCC to capture the current binary's signature. Confirmed 2026-04-25: reminders fetch broke ~8 months after a 2025-08-14 uv upgrade.
 
 Confirmed via TCC logs:
 
@@ -333,9 +333,9 @@ The `responsible_path=` field tells you exactly which binary TCC is checking. Th
 ### How to Fix
 
 1. System Settings → Privacy & Security → Full Disk Access
-2. **If a `/Users/<you>/.local/bin/uv` entry already exists, remove it first** — TCC grants go stale on uv upgrades and the existing entry may be silently invalidated.
+2. **If a `/Users/<you>/.local/bin/uv` entry already exists, fully remove it with the `−` button** — do **not** just toggle the switch off and back on. TCC grants go stale on uv upgrades because the entry is keyed to the old binary's signature; toggling the switch only flips the active flag on the same stale record. Only `−` then re-adding causes TCC to capture the current binary's signature.
 3. Click `+`, press `Cmd+Shift+G`, paste the absolute path to your local `uv` binary, for example: `$HOME/.local/bin/uv`
-4. Toggle it on
+4. Confirm the new entry's switch is on
 5. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
 6. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
 
