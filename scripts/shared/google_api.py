@@ -28,7 +28,7 @@ def list_calendar_events(
         "timeMax": time_max,
         "singleEvents": "true",
         "orderBy": "startTime",
-        "maxResults": "50",
+        "maxResults": "250",
     })
     url = (
         f"https://www.googleapis.com/calendar/v3/calendars/"

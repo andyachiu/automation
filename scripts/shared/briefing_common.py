@@ -62,7 +62,11 @@ def call_briefing_model(
         if getattr(b, "type", "") == "mcp_tool_result" and getattr(b, "is_error", False)
     ]
     if failed:
-        raise RuntimeError(f"{len(failed)} MCP tool call(s) returned is_error")
+        first = failed[0]
+        detail = " ".join(
+            getattr(c, "text", "") for c in getattr(first, "content", []) if getattr(c, "text", "")
+        ).strip()
+        raise RuntimeError(f"{len(failed)} MCP tool call(s) returned is_error; first: {detail}")
 
     text_parts = [
         block.text

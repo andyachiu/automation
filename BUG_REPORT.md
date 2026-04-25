@@ -21,7 +21,7 @@ The hosted Google Calendar (`gcal.mcp.claude.com`) and Gmail (`gmail.mcp.claude.
 
 ## Reproduction
 
-Standalone reproducer: `/Users/andychiu/Code/automation/scripts/probe_mcp.py`. Minimal shape:
+Standalone reproducer: `scripts/probe_mcp.py`. Minimal shape:
 
 ```python
 import anthropic
@@ -55,7 +55,7 @@ The model emits `mcp_tool_use` blocks with the names the server itself advertise
 
 ## Evidence
 
-From `/Users/andychiu/Code/automation/logs/mcp_probe_20260424-224504.json` (response `msg_01XP9BFex617ocbn38z48v65`, model `claude-haiku-4-5-20251001`, SDK `0.97.0`, beta `mcp-client-2025-11-20`):
+From a probe dump captured 2026-04-24 (response `msg_01XP9BFex617ocbn38z48v65`, model `claude-haiku-4-5-20251001`, SDK `0.97.0`, beta `mcp-client-2025-11-20`). Run `scripts/probe_mcp.py` to regenerate; output writes to `logs/mcp_probe_<timestamp>.json`.
 
 Request block (one of two; the Gmail one is identical in shape):
 
@@ -104,11 +104,7 @@ The model picked these tool names because the server advertised them in this sam
 
 Reproducible across two SDK versions, both currently-documented MCP beta headers, and both old and new `mcp_toolset` config shapes. Not a client misconfig.
 
-Three full request/response dumps available:
-
-- `/Users/andychiu/Code/automation/logs/mcp_probe_20260424-224320.json`
-- `/Users/andychiu/Code/automation/logs/mcp_probe_20260424-224407.json`
-- `/Users/andychiu/Code/automation/logs/mcp_probe_20260424-224504.json`
+Three full request/response dumps were captured locally during reproduction. Run `scripts/probe_mcp.py` to regenerate equivalent dumps; output is written to `logs/mcp_probe_<timestamp>.json` (gitignored — contains personal calendar/email content).
 
 ## Suspected cause
 

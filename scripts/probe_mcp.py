@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import anthropic
@@ -38,13 +38,13 @@ def block_to_dict(block) -> dict:
 
 
 def main() -> None:
-    log_dir = Path.home() / "Code" / "automation" / "logs"
+    script_dir = Path(__file__).parent
+    log_dir = script_dir.parent / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = log_dir / f"mcp_probe_{stamp}.json"
 
     # Refresh tokens first (same as production wrapper)
-    script_dir = Path(__file__).parent
     refresh = subprocess.run(
         ["uv", "run", str(script_dir / "shared" / "refresh_tokens.py")],
         capture_output=True, text=True, cwd=script_dir,

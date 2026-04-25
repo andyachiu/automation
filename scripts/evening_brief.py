@@ -159,18 +159,8 @@ def get_briefing_direct(weather: str, reminders_ctx: str = "") -> str:
     time_min = start.astimezone().isoformat()
     time_max = end.astimezone().isoformat()
 
-    try:
-        events = list_calendar_events(GCAL_TOKEN, time_min, time_max)
-    except Exception as exc:
-        log.warning("Calendar fetch failed: %s", exc)
-        events = []
-
-    try:
-        emails = list_unread_messages(GMAIL_TOKEN, max_results=50)
-    except Exception as exc:
-        log.warning("Email fetch failed: %s", exc)
-        emails = []
-
+    events = list_calendar_events(GCAL_TOKEN, time_min, time_max)
+    emails = list_unread_messages(GMAIL_TOKEN, max_results=50)
     log.info("Direct fetch: %d events, %d unread emails", len(events), len(emails))
 
     return call_briefing_model_direct(
