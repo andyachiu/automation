@@ -300,11 +300,13 @@ No Python exception, no TCC prompt, no obvious error — just silently missing.
 
 ### Root Cause
 
-macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Two things make this hard to diagnose:
+macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Three things make this hard to diagnose:
 
-1. **Silent failure.** `Path.glob("*.sqlite")` on a TCC-protected directory returns an **empty iterator** rather than raising — `_find_db()` in `shared/reminders.py` then returns `None` and logs the generic "database not found" message. `STORES_DIR.exists()` still returns `True`, so the early-return guard doesn't catch it.
+1. **Loud error since the iterdir() switch (was silent).** As of [PR #7](https://github.com/andyachiu/automation/pull/7), `_find_db()` in `shared/reminders.py` calls `STORES_DIR.iterdir()` instead of `glob()` so `PermissionError` surfaces with an actionable error pointing at the uv binary path and the System Settings fix. **Older versions silently returned `[]`** because `Path.glob()` swallowed the `PermissionError`, leaving `_find_db()` to return `None` and emit the generic "database not found" warning while `STORES_DIR.exists()` still returned `True`. If you see the old warning, your code is on an older revision.
 
 2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`) or to the python interpreter that actually calls `sqlite3.connect()`. **Neither works.** TCC uses the "responsible process" model: the wrapper runs `uv run python morning_brief.py`, so `uv` is the direct parent that spawns python, and TCC attributes the FDA decision to **uv**. FDA grants on bash or python are silently ignored.
+
+3. **Grants go stale on uv upgrade.** TCC keys FDA grants by binary signature, not by path. Whenever `uv` is replaced (`uv self update`, brew upgrade, manual reinstall), the entry for `/Users/<you>/.local/bin/uv` still appears in System Settings but is silently invalidated. The fix is to remove and re-add the same path. Confirmed 2026-04-25: reminders fetch broke ~8 months after a 2025-08-14 uv upgrade.
 
 Confirmed via TCC logs:
 
@@ -331,14 +333,85 @@ The `responsible_path=` field tells you exactly which binary TCC is checking. Th
 ### How to Fix
 
 1. System Settings → Privacy & Security → Full Disk Access
-2. Click `+`, press `Cmd+Shift+G`, paste the absolute path to your local `uv` binary, for example: `$HOME/.local/bin/uv`
-3. Toggle it on
-4. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
-5. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
+2. **If a `/Users/<you>/.local/bin/uv` entry already exists, remove it first** — TCC grants go stale on uv upgrades and the existing entry may be silently invalidated.
+3. Click `+`, press `Cmd+Shift+G`, paste the absolute path to your local `uv` binary, for example: `$HOME/.local/bin/uv`
+4. Toggle it on
+5. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
+6. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
 
 ### Applies To
 
 Any launchd agent in this project (morning brief, evening brief, allergy shot check) that reads TCC-protected resources (Reminders, Messages, Contacts, Calendar DB, etc.) via `uv run python ...`. The FDA grant on `uv` covers all of them.
+
+### Recurrence
+
+Re-apply the remove-and-re-add fix every time `uv` is upgraded. There is no automatic detection — the symptom is the loud error from step #1 above showing up in `~/.morning_brief.log`.
+
+---
+
+## iMessage Send Hangs on macOS Tahoe (BlastDoor Pile-Up)
+
+### Symptoms
+
+`run_morning_brief.sh` (or any script calling `send_imessage`) hangs for ~30 seconds during the AppleScript dispatch and fails with:
+
+```
+AppleScript error: Messages got an error: AppleEvent timed out. (-1712)
+```
+
+Or, since [PR #7](https://github.com/andyachiu/automation/pull/7) added a pre-flight, you may instead see this in `~/.morning_brief.log`:
+
+```
+ERROR Skipping iMessage send: 5 MessagesBlastDoorService instances detected (healthy is ≤1).
+Messages.app is wedged and the AppleEvent will time out with -1712.
+Recovery: force-quit Messages.app via Activity Monitor (killall fails under SIP because
+MessagesBlastDoorService is an Apple-signed XPC service), then relaunch Messages.app.
+Verify with: pgrep -lf MessagesBlastDoorService (should show 0–1 PIDs).
+```
+
+The pre-flight short-circuits the send — the brief never reaches `osascript`, so you don't waste 30s on the timeout.
+
+### Root Cause
+
+macOS 26.x (Tahoe) has a regression where `MessagesBlastDoorService` XPC workers don't get reaped between Messages.app sessions or after the Apple Intelligence Messages Assistant Extension runs. Workers pile up — a single Mac can accumulate 5+ instances over a few days, with the oldest running for the better part of a week. Once BlastDoor is wedged, Messages.app stops servicing AppleEvents entirely, so `osascript` to Messages times out with `-1712` regardless of the script content. Even read-only AppleEvents (`get name of every service`) hang.
+
+Confirmed 2026-04-25 on macOS 26.4.1 with 5 concurrent `MessagesBlastDoorService` PIDs (one running 5+ days).
+
+### How to Diagnose
+
+```bash
+# Count BlastDoor workers — healthy is 0 or 1
+pgrep -lf MessagesBlastDoorService
+
+# Optional: confirm the AppleEvent path is wedged (will hang or return -1712)
+osascript -e 'with timeout of 5 seconds' \
+          -e 'tell application "Messages" to get name of every service' \
+          -e 'end timeout'
+```
+
+If `pgrep` shows >1 PID, BlastDoor is wedged. The pre-flight in `shared/briefing_common.send_imessage` runs this same check before every send.
+
+### How to Fix
+
+**The reliable recovery is force-quit Messages.app via Activity Monitor.** Other approaches do not work:
+
+- ❌ `killall MessagesBlastDoorService` (and `sudo killall ...`) — silently fails. `MessagesBlastDoorService` is an Apple-signed XPC service protected by SIP; even root cannot terminate it.
+- ❌ `sudo launchctl kickstart -k system/com.apple.MessagesBlastDoorService` — wrong domain (returns "Could not find service ... in domain for system").
+- ❌ `osascript -e 'tell application "Messages" to quit'` — relies on AppleEvents, which are exactly what's wedged.
+- ❌ `pkill -x Messages` — also fails when Messages.app itself is unresponsive.
+- ✅ **Activity Monitor → search "Messages" → select Messages.app → click the X (Force Quit).** When Messages.app dies, launchd reaps its BlastDoor workers within a few seconds. Then relaunch Messages.app normally.
+
+After force-quitting, verify:
+
+```bash
+pgrep -lf MessagesBlastDoorService    # should show 0 (will respawn to 1 on Messages activity)
+```
+
+If workers still accumulate after relaunch, also force-quit "Messages Assistant Extension" via Activity Monitor (it's a separate, non-SIP-protected process — `killall "Messages Assistant Extension"` does work). Last resort: reboot, or disable Apple Intelligence Message Summaries to stop the Assistant Extension from spawning orphaned workers.
+
+### Recurrence
+
+Expect to re-apply the force-quit after macOS point updates or extended uptime. There is no fix in this codebase — the bug is Apple-side. The pre-flight in `send_imessage` only ensures the failure mode is loud and immediate instead of a 30-second hang followed by a misleading `-1712` error.
 
 ---
 
