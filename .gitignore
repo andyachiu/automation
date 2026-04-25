@@ -5,6 +5,7 @@ __pycache__/
 
 # Logs
 *.log
+logs/
 
 # Conversation history (personal data)
 scripts/.conversation_history.json
