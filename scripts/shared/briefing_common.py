@@ -148,7 +148,7 @@ def _blastdoor_pid_count() -> int:
             ["pgrep", "-f", "MessagesBlastDoorService"],
             capture_output=True, text=True, timeout=5,
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except (subprocess.TimeoutExpired, OSError):
         return -1
     if result.returncode not in (0, 1):  # 1 = no matches, valid
         return -1

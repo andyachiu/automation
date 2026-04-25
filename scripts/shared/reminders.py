@@ -55,8 +55,6 @@ def _find_db() -> Path | None:
     for db_path in entries:
         if db_path.suffix != ".sqlite":
             continue
-        if "-shm" in db_path.name or "-wal" in db_path.name:
-            continue
         try:
             conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
             count = conn.execute(
