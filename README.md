@@ -22,6 +22,7 @@ Running list of capabilities to build out next. Newest at the top.
 
 - **Morning brief** — Daily calendar + email summary delivered via iMessage at 7 AM on weekdays
 - **Evening brief** — Next-day look-ahead with pending email reminders, delivered at 9 PM daily
+- **Allergy shot check** — Mon/Wed/Fri reminder via iMessage if no allergy shot appointment is on the calendar within 30 days
 
 ## Latest Updates
 
@@ -53,6 +54,7 @@ uv run install_launch_agents.py
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.deploy.plist
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.morning-brief.plist
 launchctl load ~/Library/LaunchAgents/com.andychiu.automation.evening-brief.plist
+launchctl load ~/Library/LaunchAgents/com.andychiu.allergy-shot-check.plist
 ```
 
 | Agent | Schedule | What it does |
@@ -60,3 +62,4 @@ launchctl load ~/Library/LaunchAgents/com.andychiu.automation.evening-brief.plis
 | `deploy` | 6 AM weekdays | Fast-forward `main` + `uv sync` |
 | `morning-brief` | 7 AM weekdays, 9 AM weekends | Today's events + urgent emails |
 | `evening-brief` | 9 PM daily | Tomorrow's events + pending replies |
+| `allergy-shot-check` | 9 AM Mon/Wed/Fri | Reminds if no allergy shot scheduled in next 30 days |
