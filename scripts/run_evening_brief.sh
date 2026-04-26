@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 automation_setup_path
 
 LOG_FILE="$HOME/.evening_brief.log"
-UV_BIN="${UV_BIN:-uv}"
+VENV_PY="${VENV_PY:-$SCRIPT_DIR/.venv/bin/python3}"
 SECURITY_BIN="${SECURITY_BIN:-security}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 KEYCHAIN_USER="$(automation_current_user)"
@@ -44,6 +44,13 @@ trap on_failure ERR
 
 log "Starting run_evening_brief.sh"
 
+if [[ ! -x "$VENV_PY" ]]; then
+    log_err "Venv python missing or not executable: $VENV_PY"
+    log_err "Run: (cd \"$SCRIPT_DIR\" && uv sync)"
+    exit 1
+fi
+log "Using python: $(readlink -f "$VENV_PY")"
+
 # Retrieve Anthropic API key
 ANTHROPIC_API_KEY="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-anthropic-key" -w 2>/dev/null)" || {
     log_err "Could not read 'morning-brief-anthropic-key' from Keychain."
@@ -60,7 +67,7 @@ export IMESSAGE_TARGET
 
 # Refresh OAuth tokens before running
 log "Refreshing OAuth tokens..."
-"$UV_BIN" run "$SCRIPT_DIR/shared/refresh_tokens.py" || {
+"$VENV_PY" "$SCRIPT_DIR/shared/refresh_tokens.py" || {
     log_err "Token refresh failed. Re-run: uv run oauth_setup.py"
     exit 1
 }
@@ -80,4 +87,4 @@ export GCAL_TOKEN
 export GMAIL_TOKEN
 
 log "Running evening_brief.py..."
-"$UV_BIN" run "$SCRIPT_DIR/evening_brief.py" "$@"
+"$VENV_PY" "$SCRIPT_DIR/evening_brief.py" "$@"

@@ -3,6 +3,7 @@ Read incomplete reminders from the macOS Reminders SQLite database.
 """
 
 import logging
+import os
 import shutil
 import sqlite3
 import sys
@@ -18,17 +19,21 @@ CORE_DATA_EPOCH = 978307200  # 2001-01-01 in Unix time
 def _tcc_candidate_paths() -> list[str]:
     """Binaries that TCC may attribute Reminders DB access to, in order of likelihood.
 
-    TCC's "responsible process" is the parent that spawned python — typically `uv`
-    in this project (see CLAUDE.md), but plain `python script.py` would attribute
-    to sys.executable. We can't detect the actual responsible process without
-    walking /proc-equivalent, so list both candidates and let the user pick.
+    The production wrappers now invoke `<repo>/scripts/.venv/bin/python3` directly,
+    so the responsible process is the resolved python interpreter (sys.executable's
+    realpath). Listed first. `uv` is kept as a fallback in case someone is still
+    invoking via `uv run` manually — historically this project granted FDA to uv.
     """
     paths: list[str] = []
+    if sys.executable:
+        resolved = os.path.realpath(sys.executable)
+        if resolved not in paths:
+            paths.append(resolved)
+        if sys.executable != resolved and sys.executable not in paths:
+            paths.append(sys.executable)
     uv = shutil.which("uv")
     if uv and uv not in paths:
         paths.append(uv)
-    if sys.executable and sys.executable not in paths:
-        paths.append(sys.executable)
     return paths
 
 

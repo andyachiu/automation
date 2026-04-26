@@ -300,15 +300,23 @@ No Python exception, no TCC prompt, no obvious error — just silently missing.
 
 ### Root Cause
 
-macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Three things make this hard to diagnose:
+macOS TCC blocks the launchd-spawned process from reading `~/Library/Group Containers/group.com.apple.reminders/`. Two things make this hard to diagnose:
 
-1. **Loud error since the iterdir() switch (was silent).** As of [PR #7](https://github.com/andyachiu/automation/pull/7), `_find_db()` in `shared/reminders.py` calls `STORES_DIR.iterdir()` instead of `glob()` so `PermissionError` surfaces with an actionable error pointing at the uv binary path and the System Settings fix. **Older versions silently returned `[]`** because `Path.glob()` swallowed the `PermissionError`, leaving `_find_db()` to return `None` and emit the generic "database not found" warning while `STORES_DIR.exists()` still returned `True`. If you see the old warning, your code is on an older revision.
+1. **Loud error since the iterdir() switch (was silent).** As of [PR #7](https://github.com/andyachiu/automation/pull/7), `_find_db()` in `shared/reminders.py` calls `STORES_DIR.iterdir()` instead of `glob()` so `PermissionError` surfaces with an actionable error pointing at the responsible binary and the System Settings fix. **Older versions silently returned `[]`** because `Path.glob()` swallowed the `PermissionError`, leaving `_find_db()` to return `None` and emit the generic "database not found" warning while `STORES_DIR.exists()` still returned `True`. If you see the old warning, your code is on an older revision.
 
-2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`) or to the python interpreter that actually calls `sqlite3.connect()`. **Neither works.** TCC uses the "responsible process" model: the wrapper runs `uv run python morning_brief.py`, so `uv` is the direct parent that spawns python, and TCC attributes the FDA decision to **uv**. FDA grants on bash or python are silently ignored.
+2. **Wrong binary gets blamed.** The obvious instinct is to grant Full Disk Access to `/bin/bash` (the launchd `ProgramArguments[0]`). That doesn't work — TCC uses the "responsible process" model: it attributes access to whatever binary directly spawned the python that called `sqlite3.connect()`. The wrappers print `Using python: <realpath>` at startup so `~/.morning_brief.log` always shows the binary that needs FDA.
 
-3. **Grants go stale on uv upgrade.** TCC keys FDA grants by binary signature, not by path. Whenever `uv` is replaced (`uv self update`, brew upgrade, manual reinstall), the entry for `/Users/<you>/.local/bin/uv` still appears in System Settings but is silently invalidated. The fix is to **fully remove (the `−` button) and re-add** the same path — toggling the existing entry off and back on is **not** sufficient, because the toggle only flips the active flag on the same stale signature record; only `−` then `+` causes TCC to capture the current binary's signature. Confirmed 2026-04-25: reminders fetch broke ~8 months after a 2025-08-14 uv upgrade.
+### Which binary needs FDA
 
-Confirmed via TCC logs:
+The production wrappers now invoke `<repo>/scripts/.venv/bin/python3` directly. That symlink resolves to the uv-managed interpreter, e.g. `~/.local/share/uv/python/cpython-3.13.6-macos-aarch64-none/bin/python3.13`. **TCC attributes the grant to the resolved binary's signature**, so:
+
+- macOS shows the resolved path in the FDA picker even if you select the venv symlink — that's expected.
+- The grant survives `uv self update` and brew upgrades (uv is no longer in the responsible-process chain).
+- The grant goes stale only on a **Python version upgrade** (e.g., `uv` swapping in cpython-3.13.7 during a future `uv sync`). When that happens, repeat the remove-and-re-add fix on the new path.
+
+Historical: prior to this change, the wrappers ran `uv run python ...`, which made `~/.local/bin/uv` the responsible process. Confirmed 2026-04-25: reminders fetch broke ~8 months after a 2025-08-14 uv upgrade because TCC keys grants by binary signature and `uv self update` had silently invalidated the entry. The wrapper change removes that failure mode.
+
+Confirmed via TCC logs (pre-fix):
 
 ```
 AttributionChain:
@@ -316,6 +324,8 @@ AttributionChain:
   accessing={binary_path=.../cpython-3.13.6/bin/python3.13}
   ReqResult(Auth Right: Denied (Service Policy))
 ```
+
+Post-fix, `responsible_path` and `binary_path` are the same — both point at the resolved venv python.
 
 ### How to Diagnose
 
@@ -332,20 +342,21 @@ The `responsible_path=` field tells you exactly which binary TCC is checking. Th
 
 ### How to Fix
 
-1. System Settings → Privacy & Security → Full Disk Access
-2. **If a `/Users/<you>/.local/bin/uv` entry already exists, fully remove it with the `−` button** — do **not** just toggle the switch off and back on. TCC grants go stale on uv upgrades because the entry is keyed to the old binary's signature; toggling the switch only flips the active flag on the same stale record. Only `−` then re-adding causes TCC to capture the current binary's signature.
-3. Click `+`, press `Cmd+Shift+G`, paste the absolute path to your local `uv` binary, for example: `$HOME/.local/bin/uv`
-4. Confirm the new entry's switch is on
-5. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`
-6. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`
+1. Find the resolved python path: `readlink -f <repo>/scripts/.venv/bin/python3` (or grep `~/.morning_brief.log` for the `Using python:` line).
+2. System Settings → Privacy & Security → Full Disk Access.
+3. **If a stale entry for this binary already exists, fully remove it with the `−` button** — do **not** just toggle the switch off and back on. TCC keys grants by binary signature; toggling only flips the active flag on the same record. Only `−` then re-adding causes TCC to capture the current binary's signature.
+4. Click `+`, press `Cmd+Shift+G`, paste the resolved path from step 1 (e.g., `$HOME/.local/share/uv/python/cpython-3.13.6-macos-aarch64-none/bin/python3.13`). You can also pick the venv symlink at `<repo>/scripts/.venv/bin/python3` — macOS will resolve it.
+5. Confirm the new entry's switch is on.
+6. Re-trigger: `launchctl kickstart -k "gui/$(id -u)/com.andychiu.automation.morning-brief"`.
+7. Verify `~/.morning_brief.log` shows `Reminders: N overdue, M due today`.
 
 ### Applies To
 
-Any launchd agent in this project (morning brief, evening brief, allergy shot check) that reads TCC-protected resources (Reminders, Messages, Contacts, Calendar DB, etc.) via `uv run python ...`. The FDA grant on `uv` covers all of them.
+Any launchd agent in this project (morning brief, evening brief) that reads TCC-protected resources (Reminders DB, etc.) via the venv python. The FDA grant on the resolved python binary covers all of them. The allergy shot check still uses `uv run` and does not currently touch TCC-protected paths; if that changes, port it to the venv-python pattern.
 
 ### Recurrence
 
-Re-apply the remove-and-re-add fix every time `uv` is upgraded. There is no automatic detection — the symptom is the loud error from step #1 above showing up in `~/.morning_brief.log`.
+Only on Python version upgrades (e.g., uv-managed interpreter bumps from 3.13.6 → 3.13.7). `uv self update` no longer invalidates the grant. There is no automatic detection — the symptom is the loud error above in `~/.morning_brief.log`, and the `Using python:` log line will show a new path on the day it breaks.
 
 ---
 

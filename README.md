@@ -6,10 +6,6 @@ macOS automation scripts using Claude AI, Google Calendar, and Gmail.
 
 Running list of capabilities to build out next. Newest at the top.
 
-- [ ] **De-risk the uv → TCC Full Disk Access dependency**
-  - **Background:** launchd agents in this repo run `uv run python <script>` via shell wrappers. macOS TCC's responsible-process model attributes Reminders DB reads (and any other TCC-gated access) to `uv` itself, so FDA must be granted to `/Users/<you>/.local/bin/uv`. TCC keys grants by code signature, so every `uv self update` / brew upgrade silently invalidates the existing grant — and the user has to fully `−` and re-add the entry in System Settings (toggling off/on does not capture the new signature). Most recent breakage: 2026-04-25, ~8 months after the prior uv upgrade. Loud-failure surface lives in `shared/reminders.py::_find_db()` (PR #7) and is documented in `scripts/TROUBLESHOOTING.md` under "Reminders DB read silently returns empty".
-  - [ ] **Switch FDA target from `uv` to the venv's python.** Change `run_morning_brief.sh` / `run_evening_brief.sh` to invoke `<repo>/scripts/.venv/bin/python3 morning_brief.py` directly instead of `uv run python morning_brief.py`. `deploy.sh` already runs `uv sync` so the venv is provisioned. The venv's python interpreter only changes when the Python version changes (rare), not on every uv update — granting FDA to it should be a one-time setup. Also update `TROUBLESHOOTING.md` to document the new FDA target and remove the uv-upgrade-staleness section (or downgrade it to "legacy"). Verify by running the wrapper once after re-granting FDA, then `uv self update` and confirming the brief still reads reminders without re-granting.
-  - [ ] **Detect uv binary changes and warn early.** Add a preflight in the wrapper (or `shared/reminders.py`) that caches `uv`'s sha256 (or `stat -f %m %z`) on the last successful FDA-passing run (e.g. in `~/.cache/automation/uv-fingerprint`) and emits a loud log line + non-zero exit when the fingerprint differs. Even after fix #1 lands, this catches any residual TCC-attribution surprises and turns "what broke 8 months later" into "uv changed, re-verify FDA now." Cheap insurance; no behavior change when nothing has shifted.
 - [ ] **Obsidian note-taking integration**
   - [ ] Vault path + config: resolve vault location from env (`OBSIDIAN_VAULT`) with sane macOS default; store in `scripts/config.py` alongside other paths
   - [ ] Decide access layer: direct filesystem read/write (simpler, no daemon) vs. Obsidian Local REST API plugin (richer: open note, run commands) — start with filesystem, revisit if we need live UI actions
@@ -29,6 +25,7 @@ Running list of capabilities to build out next. Newest at the top.
 
 ## Latest Updates
 
+- **Switch FDA target from `uv` to the venv's python** — `run_morning_brief.sh` / `run_evening_brief.sh` now invoke `<repo>/scripts/.venv/bin/python3` directly. `uv` is no longer in the responsible-process chain, so `uv self update` / brew upgrades stop invalidating the FDA grant. Re-grant is now only needed on Python *version* upgrades. Wrappers also log the resolved python path on every run for post-mortem clarity.
 - **TROUBLESHOOTING: clarified uv FDA re-grant** — toggling the FDA switch off/on is not sufficient after a uv upgrade; the entry must be removed (`−`) and re-added so TCC captures the new code signature
 - **Shared Claude Code settings tracked** (#9) — project `.claude/settings.json` is checked in; local overrides and worktrees stay ignored
 - **Loud-failure paths documented** (#8) — troubleshooting guide for the failure modes surfaced in #7
