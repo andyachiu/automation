@@ -401,7 +401,7 @@ def format_briefing(raw: str, weather: str) -> str:
     # Focus — lowest priority
     focus = data.get("focus", "")
     if focus:
-        _try_append(lines, ["", f"Focus: {focus}"])
+        _try_append(lines, ["", "🎯 FOCUS", focus])
 
     return "\n".join(lines)
 

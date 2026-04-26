@@ -173,7 +173,7 @@ class TestFormatBriefing:
 
     def test_focus_rendered(self):
         result = morning_brief.format_briefing(json.dumps(SAMPLE_DATA), "")
-        assert "Focus:" in result
+        assert "🎯 FOCUS" in result
         assert "chapter draft" in result
 
     def test_weather_in_header(self):
@@ -218,7 +218,7 @@ class TestFormatBriefing:
     def test_empty_focus_not_rendered(self):
         data = {**SAMPLE_DATA, "focus": ""}
         result = morning_brief.format_briefing(json.dumps(data), "")
-        assert "Focus:" not in result
+        assert "🎯 FOCUS" not in result
 
     def test_missing_optional_keys_dont_crash(self):
         result = morning_brief.format_briefing('{"summary": "quiet day"}', "")

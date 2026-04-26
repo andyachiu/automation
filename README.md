@@ -26,12 +26,12 @@ Running list of capabilities to build out next. Newest at the top.
 
 ## Latest Updates
 
+- **Morning brief: 🎯 FOCUS section header** — `format_briefing` now renders the focus line with its own emoji header (matching SCHEDULE / HIGHLIGHTS / REMINDERS) instead of inline `Focus: …` so it stands out at the bottom of the brief
 - **Switch FDA target from `uv` to the venv's python** — `run_morning_brief.sh` / `run_evening_brief.sh` now invoke `<repo>/scripts/.venv/bin/python3` directly. `uv` is no longer in the responsible-process chain, so `uv self update` / brew upgrades stop invalidating the FDA grant. Re-grant is now only needed on Python *version* upgrades. Wrappers also log the resolved python path on every run for post-mortem clarity.
 - **TROUBLESHOOTING: clarified uv FDA re-grant** — toggling the FDA switch off/on is not sufficient after a uv upgrade; the entry must be removed (`−`) and re-added so TCC captures the new code signature
 - **Shared Claude Code settings tracked** (#9) — project `.claude/settings.json` is checked in; local overrides and worktrees stay ignored
 - **Loud-failure paths documented** (#8) — troubleshooting guide for the failure modes surfaced in #7
 - **Fail loud on stale TCC + wedged BlastDoor** (#7) — launchd agents now exit non-zero instead of silently dropping briefs when macOS permissions or iMessage delivery are broken
-- **Direct Google API path** (#6) — briefs can hit Calendar/Gmail directly via OAuth; remote MCP servers are now opt-in
 
 ## Structure
 
