@@ -98,15 +98,50 @@ Don't be robotic — a little warmth is good. But keep it brief. The whole thing
 
 Display the composed briefing to the user in the conversation so they can see it immediately.
 
-## Step 4: Send via iMessage
+## Step 4: Pre-flight — diagnose AppleEvent path before sending
 
-The iMessage target is stored in macOS Keychain — never hardcode it. Always read it at send time:
+`osascript`-driven sends can fail with `AppleEvent timed out (-1712)` for **two different reasons** that look identical: (a) Messages BlastDoor pile-up on Tahoe, or (b) TCC Automation denial against the parent process running Claude Code. Run **two probes in order** before composing the send. Save time by stopping at the first signal.
+
+**Probe 1 — Finder (tests AppleEvent permission, not Messages):**
+```bash
+osascript -e 'with timeout of 3 seconds' \
+          -e 'tell application "Finder" to get name of startup disk' \
+          -e 'end timeout' 2>&1
+```
+- Returns a disk name → AppleEvents work, proceed to Probe 2.
+- Returns `-1712` → **TCC Automation is denied** for this shell. Stop. Tell the user:
+  > ⚠️ This Claude Code session has no Automation permission to send AppleEvents (Finder probe failed with -1712, masking a silent TCC denial). Open System Settings → Privacy & Security → Automation, grant the parent app (kitty/Terminal/Claude) access to Messages. To trigger the TCC prompt: run `osascript -e 'tell application "Messages" to count services'` from a regular terminal once and approve. Then re-run /morning-brief.
+  Do NOT kill Messages or BlastDoor — that won't fix TCC.
+
+**Probe 2 — Messages (tests BlastDoor):**
+```bash
+osascript -e 'with timeout of 3 seconds' \
+          -e 'tell application "Messages" to count services' \
+          -e 'end timeout' 2>&1
+```
+- Returns a number → Messages is healthy, proceed.
+- Returns `-1712` (and Probe 1 passed) → **BlastDoor pile-up**. Stop. Tell the user:
+  > ⚠️ Messages.app is wedged (BlastDoor). Force-quit Messages.app via Activity Monitor or `kill -9 <pid>` of the user-owned Messages.app process. (`killall` fails under SIP for Apple-signed apps.) Then re-run /morning-brief.
+
+The in-chat briefing from Step 3 is still useful even when delivery fails.
+
+## Step 5: Read the iMessage target
+
+The target (phone or email) lives in `~/.config/morning-brief/target` (mode 600). Read it with:
 
 ```bash
-IMESSAGE_TARGET=$(security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)
+cat ~/.config/morning-brief/target 2>/dev/null
 ```
 
-If the Keychain lookup fails, report the error and skip iMessage delivery (the in-chat briefing from Step 3 is still valuable).
+If that file is missing, fall back to Keychain for backward compat:
+
+```bash
+security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null
+```
+
+If both fail, report the error and skip iMessage delivery (the in-chat briefing from Step 3 is still valuable).
+
+## Step 6: Send via iMessage
 
 ### Option A: Dispatch available
 If `mcp__dispatch__start_code_task` is available, dispatch the iMessage send to the host Mac:
@@ -115,13 +150,14 @@ If `mcp__dispatch__start_code_task` is available, dispatch the iMessage send to 
 - `prompt`:
 
   ```
-  Send this exact message via iMessage. Write the briefing to a temp file using a heredoc (to preserve newlines), read the target from Keychain, then use osascript:
+  Send this exact message via iMessage. Write the briefing to a temp file using a heredoc (to preserve newlines), read the target from ~/.config/morning-brief/target (Keychain fallback), then use osascript:
 
   cat > /tmp/morning_brief_msg.txt << 'BRIEFEOF'
   [INSERT THE FULL BRIEFING TEXT HERE — keep actual line breaks, do not escape them]
   BRIEFEOF
 
-  IMESSAGE_TARGET=$(security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)
+  IMESSAGE_TARGET=$(cat ~/.config/morning-brief/target 2>/dev/null \
+    || security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null)
 
   osascript -e 'set msgText to (do shell script "cat /tmp/morning_brief_msg.txt")' \
             -e 'tell application "Messages"' \
@@ -140,9 +176,10 @@ Then wait for the Code session to complete using `read_transcript` and let the u
 ### Option B: Running locally (no Dispatch)
 If Dispatch is not available but Bash is, send using **three separate Bash calls** (important — do NOT combine into one compound command, because each must match a permission pattern):
 
-**Call 1** — Read the iMessage target:
+**Call 1** — Read the iMessage target (file first, Keychain fallback):
 ```bash
-security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null
+cat ~/.config/morning-brief/target 2>/dev/null \
+  || security find-generic-password -a "$USER" -s "morning-brief-imessage-target" -w 2>/dev/null
 ```
 Save the output as `IMESSAGE_TARGET` for use in Call 3.
 
