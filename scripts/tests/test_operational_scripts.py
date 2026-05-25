@@ -47,7 +47,7 @@ class TestRunEveningBrief:
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
         osascript_log = tmp_path / "osascript.log"
-        uv_log = tmp_path / "uv.log"
+        venvpy_log = tmp_path / "venvpy.log"
 
         _write_executable(
             bin_dir / "security",
@@ -63,16 +63,16 @@ done
 case "$service" in
   morning-brief-anthropic-key) printf '%s\\n' 'sk-ant-test' ;;
   morning-brief-imessage-target) printf '%s\\n' '+15550001111' ;;
-  morning-brief-gcal-token) printf '%s\\n' 'gcal-token' ;;
-  morning-brief-gmail-token) printf '%s\\n' 'gmail-token' ;;
+  morning-brief-google-token) printf '%s\\n' 'google-token' ;;
   *) exit 1 ;;
 esac
 """,
         )
+        # Fake VENV_PY: log every invocation, succeed on refresh, fail on brief.
         _write_executable(
-            bin_dir / "uv",
+            bin_dir / "python3",
             """#!/bin/sh
-printf '%s\\n' "$*" >> "$TEST_UV_LOG"
+printf '%s\\n' "$*" >> "$TEST_VENVPY_LOG"
 case "$*" in
   *shared/refresh_tokens.py*) exit 0 ;;
   *evening_brief.py*) exit 42 ;;
@@ -93,8 +93,8 @@ exit 0
         env["USER"] = "testuser"
         env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
         env["TEST_OSASCRIPT_LOG"] = str(osascript_log)
-        env["TEST_UV_LOG"] = str(uv_log)
-        env["UV_BIN"] = str(bin_dir / "uv")
+        env["TEST_VENVPY_LOG"] = str(venvpy_log)
+        env["VENV_PY"] = str(bin_dir / "python3")
         env["SECURITY_BIN"] = str(bin_dir / "security")
         env["OSASCRIPT_BIN"] = str(bin_dir / "osascript")
 
@@ -107,7 +107,7 @@ exit 0
         )
 
         assert result.returncode != 0
-        assert "shared/refresh_tokens.py" in uv_log.read_text()
-        assert "evening_brief.py" in uv_log.read_text()
+        assert "shared/refresh_tokens.py" in venvpy_log.read_text()
+        assert "evening_brief.py" in venvpy_log.read_text()
         assert "Evening brief failed" in osascript_log.read_text()
         assert "Script failed with exit code" in (tmp_path / ".evening_brief.log").read_text()

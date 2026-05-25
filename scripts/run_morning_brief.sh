@@ -83,19 +83,13 @@ log "Refreshing OAuth tokens..."
     exit 1
 }
 
-# Read fresh tokens from Keychain (shared/refresh_tokens.py just updated them)
-GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
-    log_err "No gcal token after refresh. Re-run: uv run oauth_setup.py"
+# Read fresh Google access token from Keychain (shared/refresh_tokens.py just updated it)
+GOOGLE_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-google-token" -w 2>/dev/null)" || {
+    log_err "No google token after refresh. Re-run: uv run oauth_setup.py"
     exit 1
 }
 
-GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
-    log_err "No gmail token after refresh. Re-run: uv run oauth_setup.py"
-    exit 1
-}
-
-export GCAL_TOKEN
-export GMAIL_TOKEN
+export GOOGLE_TOKEN
 
 run_brief() {
     "$VENV_PY" "$SCRIPT_DIR/morning_brief.py" "$@"
@@ -118,15 +112,11 @@ log "Refreshing OAuth tokens (retry)..."
     exit 1
 }
 
-GCAL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gcal-token" -w 2>/dev/null)" || {
-    log_err "No gcal token after retry refresh."
+GOOGLE_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-google-token" -w 2>/dev/null)" || {
+    log_err "No google token after retry refresh."
     exit 1
 }
-GMAIL_TOKEN="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-gmail-token" -w 2>/dev/null)" || {
-    log_err "No gmail token after retry refresh."
-    exit 1
-}
-export GCAL_TOKEN GMAIL_TOKEN
+export GOOGLE_TOKEN
 
 log "Running morning_brief.py (retry)..."
 run_brief "$@"

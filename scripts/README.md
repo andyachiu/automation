@@ -37,7 +37,12 @@ security add-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w "sk
 # 3. Store your iMessage target (phone number or email)
 security add-generic-password -a "$USER" -s "morning-brief-imessage-target" -w "+15551234567"
 
-# 4. Authorize Google Calendar and Gmail (opens browser for OAuth)
+# 4. One-time: create a Google Cloud OAuth client (Desktop app type) with
+#    Calendar API + Gmail API enabled and the consent screen published to
+#    "In production" (avoids 7-day refresh-token expiry in Testing mode).
+#    Then authorize:
+export GOOGLE_OAUTH_CLIENT_ID="<client_id>.apps.googleusercontent.com"
+export GOOGLE_OAUTH_CLIENT_SECRET="<client_secret>"
 uv run oauth_setup.py
 
 # 5. Test it
@@ -127,8 +132,9 @@ deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evenin
                                      └── morning_brief.py                   └── evening_brief.py
                                          ├── Fetch weather (wttr.in)            ├── Fetch weather (wttr.in)
                                          ├── Fetch reminders (SQLite DB)        ├── Fetch reminders (SQLite DB)
+                                         ├── Fetch calendar + email (Google)    ├── Fetch calendar + email (Google)
                                          ├── Build prompt (Mon/Fri/allergy)     ├── Build prompt
-                                         ├── Call Haiku + Calendar/Gmail MCP    ├── Call Haiku + Calendar/Gmail MCP
+                                         ├── Call Haiku with data inlined       ├── Call Haiku with data inlined
                                          ├── Parse JSON → emoji sections        ├── Parse JSON → emoji sections
                                          ├── Send via iMessage                  ├── Send via iMessage
                                          └── On failure: send error iMessage    └── On failure: send error iMessage
@@ -190,11 +196,12 @@ The project uses two independent auth systems:
 | System | Purpose | Keychain Entry |
 |--------|---------|----------------|
 | Anthropic API Key | Claude API access | `morning-brief-anthropic-key` |
-| Google OAuth (Calendar) | Calendar MCP server | `morning-brief-gcal-token` |
-| Google OAuth (Gmail) | Gmail MCP server | `morning-brief-gmail-token` |
+| Google OAuth Client | Your Cloud OAuth client (id + secret) | `morning-brief-google-client` |
+| Google Access Token | Calendar + Gmail (refreshed hourly) | `morning-brief-google-token` |
+| Google Refresh Token | Used to mint new access tokens | `morning-brief-google-refresh-token` |
 | iMessage Target | Delivery address | `morning-brief-imessage-target` |
 
-Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for auth issues.
+Google access tokens expire hourly and are refreshed automatically by `shared/refresh_tokens.py` against `oauth2.googleapis.com/token`. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for auth issues.
 
 ## Project Structure
 
@@ -207,24 +214,28 @@ Google tokens expire hourly and are refreshed automatically. See [TROUBLESHOOTIN
 ├── oauth_setup.py          # One-time Google OAuth setup
 ├── shared/
 │   ├── __init__.py
+│   ├── briefing_common.py  # Claude call (no tools, data inlined) + iMessage send + JSON parse
+│   ├── google_api.py       # Direct REST against googleapis.com (Calendar + Gmail)
 │   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
-│   └── refresh_tokens.py   # Refreshes expired Google OAuth tokens
+│   ├── refresh_tokens.py   # Refreshes the Google access token
+│   └── system.py           # Tiny helpers (e.g. current_user)
 ├── check_setup.py          # Preflight environment check
 ├── check_api_key.py        # Validates Anthropic API key
 ├── allergy-shot-check/
 │   ├── check_allergy_shot.sh   # Standalone allergy appointment reminder
-│   ├── check_allergy_shot.py   # Python helper for allergy shot check
+│   ├── check_allergy_shot.py   # Direct Calendar fetch + local regex match (no LLM)
 │   └── README.md
 ├── tests/
 │   ├── __init__.py
-│   ├── test_morning_brief.py  # Unit tests for morning brief (offline, fully mocked)
-│   ├── test_reminders.py      # Unit tests for reminders module + brief integration
-│   ├── test_mcp_setup.py      # Tests for OAuth, token refresh, MCP config, skill
-│   └── test_environment.py    # Environment/integration tests (macOS only)
+│   ├── test_morning_brief.py     # Unit tests for morning brief (offline, fully mocked)
+│   ├── test_reminders.py         # Unit tests for reminders module + brief integration
+│   ├── test_launch_agents.py     # plist render correctness
+│   ├── test_operational_scripts.py  # Wrapper failure-notification behavior
+│   └── test_environment.py       # Environment/integration tests (macOS only)
 ├── .claude/skills/
 │   └── morning-brief/      # /morning-brief Claude Code skill
 │       └── SKILL.md
 ├── pyproject.toml          # Python project config (anthropic>=0.86.0)
 ├── CLAUDE.md               # Development notes and conventions
-└── TROUBLESHOOTING.md      # Diagnostic guide for MCP and iMessage issues
+└── TROUBLESHOOTING.md      # Diagnostic guide for OAuth and iMessage issues
 ```

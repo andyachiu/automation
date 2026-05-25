@@ -9,7 +9,7 @@ This is a macOS automation toolkit that integrates Claude AI with Google Calenda
 
 **Platform:** macOS only (requires Keychain, `osascript`, Messages app)
 **Runtime:** Python >=3.13.6, managed with `uv`
-**Model:** `claude-haiku-4-5-20251001` (Haiku — required to complete within the 5-minute MCP server timeout; on allergy shot days the prompt makes 3 tool calls)
+**Model:** `claude-haiku-4-5-20251001` (Haiku — fast/cheap is sufficient now that all data is fetched in-process and passed inline; Claude does formatting only, no tool calls)
 
 ---
 
@@ -58,31 +58,28 @@ automation/
 
 ## Authentication Architecture
 
-This project has **two separate authentication systems** that must both be functional:
+Two independent auth systems must both be functional:
 
 ### 1. Anthropic API Key
 - Stored in Keychain: `morning-brief-anthropic-key`
 - Validated by `check_api_key.py`
 - Set via: `security add-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w "sk-ant-..."`
 
-### 2. Google OAuth Tokens (for MCP servers)
-- MCP servers at `gcal.mcp.claude.com` and `gmail.mcp.claude.com` require **separate** Google OAuth tokens
-- Tokens are passed via the `authorization_token` field in the MCP server config
-- Stored in Keychain:
-  - `morning-brief-gcal-token` — active Google Calendar access token
-  - `morning-brief-gmail-token` — active Gmail access token
-  - `morning-brief-gcal-refresh-token` — refresh token for Calendar
-  - `morning-brief-gmail-refresh-token` — refresh token for Gmail
-  - `morning-brief-gcal-client` — JSON with `client_id` and `client_secret`
-  - `morning-brief-gmail-client` — JSON with `client_id` and `client_secret`
-- Obtained via `oauth_setup.py` (one-time PKCE flow)
-- Refreshed via `refresh_tokens.py` (called automatically by shell wrappers)
+### 2. Google OAuth (direct against Google, no proxy)
+- Single Google Cloud Console "Desktop app" OAuth client. Calendar API + Gmail API enabled. Consent screen published to "In production" so refresh tokens don't expire weekly.
+- One PKCE authorization covers both scopes (`calendar.readonly` + `gmail.modify`). One refresh token for both.
+- Keychain entries:
+  - `morning-brief-google-client` — JSON `{client_id, client_secret}` (your Cloud Console credentials)
+  - `morning-brief-google-refresh-token` — long-lived, used to mint access tokens
+  - `morning-brief-google-token` — short-lived access token (~1h)
+- `oauth_setup.py` runs the one-time PKCE flow against `accounts.google.com/o/oauth2/v2/auth` and `oauth2.googleapis.com/token`. First run reads client from `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` env vars and stores in Keychain; subsequent runs read from Keychain.
+- `shared/refresh_tokens.py` refreshes against `oauth2.googleapis.com/token` and writes the new access token to Keychain. Called by every wrapper script.
 
 ### 3. iMessage Target
 - Stored in Keychain: `morning-brief-imessage-target` (phone number or email)
 - Set via: `security add-generic-password -a "$USER" -s "morning-brief-imessage-target" -w "+15551234567"`
 
-**Critical distinction:** A working Anthropic API key does NOT mean MCP servers are authenticated. The error `Authentication error while communicating with MCP server` always indicates a Google OAuth problem, not an API key problem. See `TROUBLESHOOTING.md` for diagnostics.
+**Historical:** Prior to 2026-05-24, this project routed OAuth through Anthropic-hosted proxies at `gcal.mcp.claude.com` / `gmail.mcp.claude.com`. Those endpoints (`/token`, `/register`, `/mcp`) were retired and now return 404, which is why everything is now direct against Google. `BUG_REPORT.md` documents the related MCP server bug filed before the migration.
 
 ---
 
@@ -97,25 +94,26 @@ deploy.sh
   └── On failure: send iMessage notification + exit 1
 ```
 
-### Morning Briefing (8am launchd)
+### Morning Briefing (7am weekdays / 9am weekends launchd)
 ```
 run_morning_brief.sh
   ├── trap on_failure ERR (sends error iMessage on any failure)
   ├── Read Anthropic API key from Keychain
   ├── Read iMessage target from Keychain
-  ├── refresh_tokens.py
-  │   ├── Read refresh tokens + client credentials from Keychain
-  │   ├── POST to /token endpoint on each MCP server
-  │   └── Write new access tokens back to Keychain
-  ├── Read fresh GCAL_TOKEN and GMAIL_TOKEN from Keychain
+  ├── shared/refresh_tokens.py
+  │   ├── Read morning-brief-google-client (client_id + client_secret) from Keychain
+  │   ├── Read morning-brief-google-refresh-token from Keychain
+  │   ├── POST to oauth2.googleapis.com/token (grant_type=refresh_token)
+  │   └── Write new access token to morning-brief-google-token
+  ├── Read fresh GOOGLE_TOKEN from Keychain
   └── morning_brief.py
       ├── get_weather() → wttr.in (plain text, empty string on failure)
       ├── get_reminders(today) → reads macOS Reminders SQLite DB (overdue + due today)
       ├── is_monday() → adds week-ahead section if True
-      ├── build_user_prompt(weather, reminders_ctx) → includes weather, reminders, email urgency criteria
-      ├── get_briefing(weather, reminders_ctx) → Claude Haiku with Calendar + Gmail MCP
-      │   └── Returns JSON: {summary, events, urgent_emails, focus, reminders}
-      │                      + week_preview (Mondays only)
+      ├── get_briefing(weather, reminders_ctx)
+      │   ├── list_calendar_events(GOOGLE_TOKEN, today, +30d) — direct REST against googleapis.com
+      │   ├── list_unread_messages(GOOGLE_TOKEN, 20 or 50) — direct REST against gmail.googleapis.com
+      │   └── call_briefing_model(...) → Claude Haiku, no tools, data inlined in the prompt
       ├── format_briefing(raw, weather) → plain text (falls back to raw if not valid JSON)
       ├── send_imessage() → BlastDoor pre-flight (pgrep) → osascript → Messages → iMessage
       │   └── If >1 MessagesBlastDoorService instances detected, fails fast with recovery
@@ -141,11 +139,10 @@ run_morning_brief.sh
 - `deploy.sh` logs to `~/.morning_brief_deploy.log` (append-only)
 - Both log files are persistent across reboots and should be checked first when debugging
 
-### MCP Integration
-- Uses Anthropic SDK beta header: `mcp-client-2025-04-04`
-- MCP servers configured with `authorization_token` (not `api_key` or `bearer`)
-- Graceful degradation: if tokens are missing, scripts continue without MCP access
-- The SDK parameter is `mcp_servers` (list of dicts with `name`, `url`, `authorization_token`)
+### Google API Calls
+- All Google calls are direct REST against `googleapis.com` (Calendar v3, Gmail v1) — no MCP, no proxy.
+- The `Authorization: Bearer <token>` header carries the access token from Keychain.
+- `shared/google_api.py` is the only thing that talks to Google; bumps to scope or endpoint go there.
 
 ### Bash Script Conventions
 - All `.sh` files use `set -euo pipefail` for strict error handling
@@ -169,7 +166,10 @@ security add-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w "sk
 # 3. Store iMessage target
 security add-generic-password -a "$USER" -s "morning-brief-imessage-target" -w "+15551234567"
 
-# 4. Authorize Google services (runs browser OAuth flow)
+# 4. Authorize Google services (runs browser OAuth flow against Google directly)
+#    First run needs the OAuth client from your Google Cloud Console project:
+export GOOGLE_OAUTH_CLIENT_ID="<id>.apps.googleusercontent.com"
+export GOOGLE_OAUTH_CLIENT_SECRET="<secret>"
 uv run oauth_setup.py
 
 # 5. Test the morning brief
@@ -191,21 +191,10 @@ ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
 ## Development Notes
 
 - **Do not add markdown formatting** to Claude responses — they are delivered as plain iMessages
-- **Model:** `claude-haiku-4-5-20251001`. MCP server enforces a ~5-minute connection timeout. Prompt is constrained to 2 tool calls max (calendar + email) to stay within it. `sent_awaiting_reply` was removed as it required extra MCP calls.
-- **Deploy is separate from the briefing** — merge to `master` and `deploy.sh` picks it up at 7am
-- **Token refresh** must happen before every token read — Google tokens expire in ~1 hour
-- **`check_api_key.py`** only tests the Anthropic API key. Use `TROUBLESHOOTING.md` for MCP issues
+- **Model:** `claude-haiku-4-5-20251001`. No tool calls happen — calendar + email are fetched in Python and inlined in the prompt, so Claude only formats the output.
+- **Deploy is separate from the briefing** — merge to `main` and `deploy.sh` picks it up at 6am
+- **Token refresh** must happen before every token read — Google access tokens expire in ~1 hour
+- **`check_api_key.py`** only tests the Anthropic API key. For OAuth issues, see `TROUBLESHOOTING.md` → "Google OAuth Token Refresh Fails"
 - `main.py` is a placeholder and not used by any production script
-- Unit tests (`test_morning_brief.py`) are fully offline and safe to run anywhere
+- Unit tests (`test_morning_brief.py`, `test_reminders.py`, `test_launch_agents.py`, `test_operational_scripts.py`) are fully offline and safe to run anywhere
 - Integration tests (`test_environment.py`) require macOS + Keychain — will fail in CI/sandboxes
-
----
-
-## MCP Server Auth vs API Key Auth
-
-This project uses remote MCP servers (Google Calendar, Gmail) that require **separate OAuth tokens** from the Anthropic API key. When debugging:
-
-- Do NOT assume a working API key means everything is authenticated. MCP servers have their own OAuth tokens stored in macOS Keychain (`morning-brief-gcal-token`, `morning-brief-gmail-token`).
-- The error `Authentication error while communicating with MCP server` means the **Google OAuth token** is missing, expired, or invalid — not the Anthropic API key.
-- Always check both: (1) Anthropic API key validity via `check_api_key.py`, and (2) MCP OAuth token presence and freshness.
-- See `TROUBLESHOOTING.md` for the full diagnostic guide.

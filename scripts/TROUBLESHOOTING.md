@@ -56,80 +56,60 @@ uv run pytest tests/test_environment.py -v
 
 ---
 
-## MCP Server Connection Timeout with Larger Models
+## Google OAuth Token Refresh Fails
 
 ### Symptoms
 
+`run_morning_brief.sh` / `run_evening_brief.sh` / `check_allergy_shot.sh` fail at the refresh step:
+
 ```
-Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error',
-'message': 'Connection to MCP server timed out. The server may be unavailable or unresponsive.'}}
+ERROR: Token refresh failed. Re-run: uv run oauth_setup.py
 ```
 
-The request hangs for exactly ~5 minutes before failing.
+And `shared/refresh_tokens.py` logs one of:
+
+- `Refresh failed (400): {"error": "invalid_grant", ...}` — refresh token was revoked, expired, or never minted with `access_type=offline`.
+- `Refresh failed (401): {"error": "invalid_client", ...}` — client_id / client_secret in Keychain doesn't match the Google Cloud Console project.
+- `Refresh failed (403)` — the OAuth client or API was disabled in the Console.
+- Connection error — network issue or `oauth2.googleapis.com` unreachable.
 
 ### Root Cause
 
-The remote MCP servers enforce a ~5-minute connection timeout. Larger models like Sonnet make more thorough tool calls (reading more emails, more calendar events) and consistently exceed this limit. Haiku is fast enough to complete within the window.
+`refresh_tokens.py` POSTs to `https://oauth2.googleapis.com/token` with `grant_type=refresh_token`. Common failures:
 
-### Fix
+- **Testing-mode consent screen + sensitive scopes** → Google expires refresh tokens after 7 days. Publish the consent screen to "In production" in the Cloud Console to remove this constraint.
+- **User revoked the grant** at <https://myaccount.google.com/permissions>.
+- **6 months of inactivity** — Google invalidates idle refresh tokens.
+- **Client credentials rotated** in the Console but Keychain still has the old `client_id`/`client_secret`.
 
-Use `claude-haiku-4-5-20251001`. Do not switch to Sonnet or Opus for this script. The remote MCP servers enforce a ~5-minute connection timeout; on allergy shot days the prompt makes 3 tool calls (calendar today + allergy shot search + email), and Sonnet consistently exceeds the limit at that call count. Haiku completes within the window.
+### How to Diagnose
 
----
+```bash
+# Confirm Google's endpoint is reachable
+curl -sS -o /dev/null -w "%{http_code}\n" https://oauth2.googleapis.com/token   # expect 405 (POST-only)
 
-## MCP Authentication Error Misdiagnosed as Credits Issue
+# Inspect the stored client (don't print this in shared logs)
+security find-generic-password -a "$USER" -s "morning-brief-google-client" -w | python3 -m json.tool
 
-## MCP Authentication Error Misdiagnosed as Credits Issue
-
-### The Problem
-
-When running `morning_brief.py`, the API returns:
-
+# Try the refresh manually
+uv run shared/refresh_tokens.py
 ```
-Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error',
-'message': 'Authentication error while communicating with MCP server.
-Please check your authorization token.'}}
-```
-
-This error is **misleading** — it looks like an API key or credits problem, but it's actually about **OAuth tokens for the remote MCP servers** (Google Calendar, Gmail). The Anthropic API key can be perfectly valid (confirmed by `check_api_key.py`) while the MCP servers still fail because they need separate Google OAuth tokens.
-
-### Why It's Confusing
-
-1. `check_api_key.py` reports "API key works and has credits" — because it tests the Anthropic API directly, not the MCP servers.
-2. The error says "Authentication error" with no indication of *which* authentication failed (Anthropic vs. Google OAuth).
-3. The MCP servers were originally configured without `authorization_token` fields, so the request silently sent no token and got a generic auth error back.
-
-### Root Cause
-
-The remote MCP servers at `gcal.mcp.claude.com` and `gmail.mcp.claude.com` act as proxies to Google APIs. They require a Google OAuth access token passed via the `authorization_token` field in the `mcp_servers` config. Without it, the server returns a 400 error that the Anthropic SDK surfaces as an `invalid_request_error`.
 
 ### How to Fix
 
-1. **Get OAuth tokens** using the MCP Inspector:
+1. **Confirm consent screen is "In production"** — Cloud Console → APIs & Services → OAuth consent screen → Publishing status. Publish without verification (single-user CLI, ~100-user cap is fine).
+2. **Re-run setup**:
    ```bash
-   npx @modelcontextprotocol/inspector
+   export GOOGLE_OAUTH_CLIENT_ID="<client_id>.apps.googleusercontent.com"
+   export GOOGLE_OAUTH_CLIENT_SECRET="<client_secret>"
+   uv run oauth_setup.py
    ```
-   - Select **SSE** transport type
-   - Enter the server URL (e.g., `https://gcal.mcp.claude.com/mcp`)
-   - Click **Open Auth Settings** → **Quick OAuth Flow**
-   - Authorize with your Google account
-   - **Copy the full `access_token`** — make sure it's not truncated (watch for `...` at the end, which means the display cut it off)
-   - Repeat for `https://gmail.mcp.claude.com/mcp`
+   This re-runs the PKCE flow with `prompt=consent` (forces a fresh refresh token) and overwrites the Keychain entries.
+3. If Google says the grant was revoked, also revoke any leftover authorization at <https://myaccount.google.com/permissions> before re-running setup — otherwise the new grant may inherit the old revoked state.
 
-2. **Store tokens in Keychain**:
-   ```bash
-   security add-generic-password -a "$USER" -s "morning-brief-gcal-token" -w "FULL_TOKEN_HERE"
-   security add-generic-password -a "$USER" -s "morning-brief-gmail-token" -w "FULL_TOKEN_HERE"
-   ```
+### Historical context
 
-3. Run `bash run_morning_brief.sh` — it pulls the tokens from Keychain automatically.
-
-### How to Avoid This in the Future
-
-- **Test what you use.** If the app calls MCP servers, the health check should test MCP connectivity too, not just the base API key. A passing `check_api_key.py` only proves the Anthropic API key works — it says nothing about MCP server auth.
-- **Check all credentials.** Remote MCP servers have their own auth (OAuth tokens) that is separate from your Anthropic API key. When you see an auth error, ask: *which* service is failing?
-- **Watch for truncation.** OAuth tokens are long strings. When copying from UIs, always verify you have the complete value — a trailing `...` means it was cut off.
-- **Token expiry.** Google OAuth access tokens expire after ~1 hour. Token refresh is automated: `run_morning_brief.sh` calls `refresh_tokens.py` before every run, which exchanges the stored refresh token for a new access token. If refresh itself fails, see the "Token Refresh Fails" section below.
+Pre-2026-05, this project used Anthropic's hosted OAuth proxies at `gcal.mcp.claude.com` / `gmail.mcp.claude.com`. Those endpoints were retired and now return 404, which is why the project was migrated to direct Google OAuth. `BUG_REPORT.md` documents the related MCP server bug filed before the migration; that report is now historical.
 
 ---
 
@@ -177,60 +157,6 @@ Check `~/.claude/channels/imessage/access.json` — `allowFrom` should be empty 
 ### Prevention
 
 Only add numbers to `allowFrom` that you explicitly want to be able to send commands to Claude. Keep your spouse's (or anyone else's) number out of this list unless they are an intended user of the iMessage channel.
-
----
-
-## Token Refresh Fails: `/token` Endpoint Changed or Unavailable
-
-### Symptoms
-
-`run_morning_brief.sh` fails at the "Refreshing OAuth tokens..." step:
-
-```
-ERROR: Token refresh failed. Re-run: uv run oauth_setup.py
-```
-
-`refresh_tokens.py` logs an HTTP error:
-
-```
-gcal: Refresh failed (404): Not Found
-gmail: Refresh failed (404): Not Found
-```
-
-Or a connection error to `gcal.mcp.claude.com`.
-
-### Root Cause
-
-`refresh_tokens.py` calls a `/token` endpoint on Anthropic's MCP servers (`gcal.mcp.claude.com/token`, `gmail.mcp.claude.com/token`) to exchange refresh tokens for new access tokens. This endpoint is not part of a public, versioned API — if Anthropic changes its MCP server architecture, the endpoint may move or be removed without notice.
-
-This is distinct from an expired refresh token. The refresh token itself may be valid, but the server-side endpoint it's calling no longer exists.
-
-### How to Diagnose
-
-```bash
-# Test the endpoint — a 400 means it exists (test token is invalid, that's expected)
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -X POST https://gcal.mcp.claude.com/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=refresh_token&refresh_token=test"
-```
-
-- `400` → endpoint exists and is working; the issue is with your refresh token, not the endpoint
-- `404` or connection error → endpoint has moved or been removed
-
-### How to Fix
-
-**If the endpoint still exists (400 response):** your refresh token has been invalidated. Re-run the OAuth flow:
-
-```bash
-uv run oauth_setup.py
-```
-
-**If the endpoint is gone (404 or connection error):**
-
-1. Re-run `oauth_setup.py` to get a fresh access token for immediate use.
-2. Update `refresh_tokens.py`: check Anthropic's MCP server documentation for the new token endpoint and update the `base_url` or token path in the `MCP_SERVERS` config at the top of the file.
-3. If automated refresh is no longer possible, fall back to the MCP Inspector flow (see "MCP Authentication Error" section) and run `oauth_setup.py` manually when tokens expire (~1 hour TTL).
 
 ---
 

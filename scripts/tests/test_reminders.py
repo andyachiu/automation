@@ -241,7 +241,7 @@ class TestMorningBriefReminders:
         prompt = morning_brief.build_user_prompt("", ctx)
         assert "[OVERDUE] Pay bills" in prompt
         assert "[Due today] Call dentist" in prompt
-        assert "do NOT use a tool call for these" in prompt
+        assert "already fetched" in prompt
         assert '"reminders"' in prompt
 
     def test_prompt_no_reminders_key_when_empty(self):
@@ -295,7 +295,7 @@ class TestEveningBriefReminders:
         prompt = evening_brief.build_user_prompt("", ctx)
         assert "[OVERDUE] Pay bills" in prompt
         assert "[Due tomorrow] Prep slides" in prompt
-        assert "do NOT use a tool call for these" in prompt
+        assert "already fetched" in prompt
         assert '"reminders"' in prompt
 
     def test_prompt_no_reminders_key_when_empty(self):

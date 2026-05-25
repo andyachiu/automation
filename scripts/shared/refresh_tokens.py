@@ -1,49 +1,41 @@
 #!/usr/bin/env python3
 """
-Refresh OAuth tokens for MCP servers using stored refresh tokens.
+Refresh the Google OAuth access token using the stored refresh token.
 
-Called by run_morning_brief.sh before fetching the briefing.
-Updates access tokens in macOS Keychain.
+Called by run_morning_brief.sh / run_evening_brief.sh / check_allergy_shot.sh
+before each run. Writes the new access token to macOS Keychain. A single
+token covers both Calendar and Gmail since both scopes were granted in
+oauth_setup.py.
 """
+
+from __future__ import annotations
 
 import json
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
 try:
     from shared.system import current_user
 except ModuleNotFoundError:
-    # Supports direct execution via `uv run shared/refresh_tokens.py`.
+    # Supports `uv run shared/refresh_tokens.py` from the scripts/ dir.
     from system import current_user
 
-MCP_SERVERS = {
-    "gcal": {
-        "base_url": "https://gcal.mcp.claude.com",
-        "keychain_refresh": "morning-brief-gcal-refresh-token",
-        "keychain_access": "morning-brief-gcal-token",
-        "keychain_client": "morning-brief-gcal-client",
-    },
-    "gmail": {
-        "base_url": "https://gmail.mcp.claude.com",
-        "keychain_refresh": "morning-brief-gmail-refresh-token",
-        "keychain_access": "morning-brief-gmail-token",
-        "keychain_client": "morning-brief-gmail-client",
-    },
-}
+KC_CLIENT  = "morning-brief-google-client"
+KC_REFRESH = "morning-brief-google-refresh-token"
+KC_ACCESS  = "morning-brief-google-token"
+
+TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
 
 def keychain_get(service: str) -> str | None:
     result = subprocess.run(
-        ["security", "find-generic-password", "-a",
-         current_user(),
-         "-s", service, "-w"],
+        ["security", "find-generic-password", "-a", current_user(), "-s", service, "-w"],
         capture_output=True, text=True,
     )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def keychain_set(service: str, value: str) -> None:
@@ -59,29 +51,28 @@ def keychain_set(service: str, value: str) -> None:
         )
 
 
-def refresh_token(name: str, config: dict) -> bool:
-    refresh = keychain_get(config["keychain_refresh"])
+def main() -> int:
+    refresh = keychain_get(KC_REFRESH)
     if not refresh:
-        print(f"  {name}: No refresh token found. Run oauth_setup.py first.", file=sys.stderr)
-        return False
+        print(f"  No refresh token in Keychain ({KC_REFRESH}). Re-run oauth_setup.py.", file=sys.stderr)
+        return 1
 
-    client_json = keychain_get(config["keychain_client"])
+    client_json = keychain_get(KC_CLIENT)
     if not client_json:
-        print(f"  {name}: No client credentials found. Run oauth_setup.py first.", file=sys.stderr)
-        return False
-
+        print(f"  No client credentials in Keychain ({KC_CLIENT}). Re-run oauth_setup.py.", file=sys.stderr)
+        return 1
     client = json.loads(client_json)
 
-    token_data = urllib.parse.urlencode({
-        "grant_type": "refresh_token",
+    payload = urllib.parse.urlencode({
+        "grant_type":    "refresh_token",
         "refresh_token": refresh,
-        "client_id": client["client_id"],
-        "client_secret": client.get("client_secret", ""),
+        "client_id":     client["client_id"],
+        "client_secret": client["client_secret"],
     }).encode()
 
     req = urllib.request.Request(
-        f"{config['base_url']}/token",
-        data=token_data,
+        TOKEN_ENDPOINT,
+        data=payload,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
@@ -90,34 +81,25 @@ def refresh_token(name: str, config: dict) -> bool:
             tokens = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        print(f"  {name}: Refresh failed ({e.code}): {body}", file=sys.stderr)
-        return False
+        print(f"  Refresh failed ({e.code}): {body}", file=sys.stderr)
+        return 1
 
-    access_token = tokens.get("access_token")
-    if not access_token:
-        print(f"  {name}: No access token in refresh response", file=sys.stderr)
-        return False
+    access = tokens.get("access_token")
+    if not access:
+        print(f"  No access_token in refresh response: {tokens}", file=sys.stderr)
+        return 1
 
-    keychain_set(config["keychain_access"], access_token)
+    keychain_set(KC_ACCESS, access)
 
-    # Update refresh token if a new one was issued
+    # Google rotates refresh tokens rarely, but honor it if it happens.
     new_refresh = tokens.get("refresh_token")
-    if new_refresh:
-        keychain_set(config["keychain_refresh"], new_refresh)
+    if new_refresh and new_refresh != refresh:
+        keychain_set(KC_REFRESH, new_refresh)
+        print("  Refresh token rotated.")
 
-    print(f"  {name}: Token refreshed.")
-    return True
-
-
-def main():
-    all_ok = True
-    for name, config in MCP_SERVERS.items():
-        if not refresh_token(name, config):
-            all_ok = False
-
-    if not all_ok:
-        sys.exit(1)
+    print("  Access token refreshed.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -32,12 +32,9 @@ SCRIPTS_DIR = Path(__file__).parent
 
 KEYCHAIN_ENTRIES = {
     "morning-brief-anthropic-key": "Anthropic API key",
-    "morning-brief-gcal-token": "Google Calendar access token",
-    "morning-brief-gmail-token": "Gmail access token",
-    "morning-brief-gcal-refresh-token": "Google Calendar refresh token",
-    "morning-brief-gmail-refresh-token": "Gmail refresh token",
-    "morning-brief-gcal-client": "Google Calendar OAuth client credentials",
-    "morning-brief-gmail-client": "Gmail OAuth client credentials",
+    "morning-brief-google-token": "Google access token (Calendar + Gmail)",
+    "morning-brief-google-refresh-token": "Google refresh token",
+    "morning-brief-google-client": "Google OAuth client credentials",
     "morning-brief-imessage-target": "iMessage delivery address",
 }
 
@@ -274,7 +271,7 @@ def check_keychain() -> bool:
                     "Store the correct Anthropic API key in Keychain.",
                 )
                 passed = False
-            elif service in ("morning-brief-gcal-client", "morning-brief-gmail-client"):
+            elif service == "morning-brief-google-client":
                 try:
                     data = json.loads(value)
                     if "client_id" not in data or "client_secret" not in data:

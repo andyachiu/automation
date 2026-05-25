@@ -115,18 +115,18 @@ class TestBuildUserPrompt:
     def test_email_criteria_direct_recipient(self):
         with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
-        assert "To:" in prompt or "directly to you" in prompt
+        assert "directly addressed to me" in prompt
 
     def test_weekday_email_criteria_timeframe(self):
         with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
             prompt = morning_brief.build_user_prompt("")
         assert "24 hours" in prompt
 
-    def test_weekend_prompt_uses_recent_emails_instead_of_unread_timeframe(self):
+    def test_weekend_prompt_drops_24h_window(self):
         with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=True):
             prompt = morning_brief.build_user_prompt("")
-        assert "20 most recent emails" in prompt
         assert "24 hours" not in prompt
+        assert "received today" in prompt
 
     def test_email_criteria_excludes_newsletters(self):
         with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):

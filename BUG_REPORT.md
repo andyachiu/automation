@@ -1,5 +1,10 @@
 # Bug: hosted Google Calendar + Gmail MCP servers advertise tool names that `tools/call` then rejects as "no longer exist"
 
+> **Status (2026-05-24):** Moot. Anthropic retired the hosted proxies entirely (`gcal.mcp.claude.com` / `gmail.mcp.claude.com` return 404 across all paths — `/mcp`, `/token`, `/register`, `/authorize`). This project migrated to direct Google OAuth + direct Calendar/Gmail REST as of commit landing today, so the MCP bug below no longer affects us. Keeping the report for archival context.
+
+---
+
+
 ## File at
 
 1. **Primary:** [anthropics/claude-ai-mcp issues](https://github.com/anthropics/claude-ai-mcp/issues/new/choose) — this repo is Anthropic's stated channel for bugs in Claude.ai-hosted MCP servers (covers `*.mcp.claude.com`, OAuth, tool discovery).

@@ -26,12 +26,12 @@ Running list of capabilities to build out next. Newest at the top.
 
 ## Latest Updates
 
+- **Migrated off the retired Anthropic hosted MCP proxy → direct Google OAuth** — `gcal.mcp.claude.com` / `gmail.mcp.claude.com` started returning 404 on every path. `oauth_setup.py` and `shared/refresh_tokens.py` now go straight to `accounts.google.com` / `oauth2.googleapis.com` using your own Google Cloud OAuth client (`morning-brief-google-client` in Keychain). Single token covers both Calendar and Gmail. MCP-only code paths (`call_briefing_model` MCP variant, `BRIEFING_USE_MCP` env var, `tests/test_mcp_setup.py`, `probe_mcp.py`) removed. Allergy shot check switched to direct Calendar fetch + local regex match (no LLM call).
 - **`/morning-brief` skill: BlastDoor vs TCC probes before iMessage send** — Step 4 now runs a Finder AppleEvent probe (tests Automation permission) and a Messages probe (tests BlastDoor health) so a `-1712` timeout points at the right fix instead of guessing. Also reads the iMessage target from `~/.config/morning-brief/target` first, Keychain as fallback.
 - **Morning brief: 🎯 FOCUS section header** — `format_briefing` now renders the focus line with its own emoji header (matching SCHEDULE / HIGHLIGHTS / REMINDERS) instead of inline `Focus: …` so it stands out at the bottom of the brief
 - **Switch FDA target from `uv` to the venv's python** — `run_morning_brief.sh` / `run_evening_brief.sh` now invoke `<repo>/scripts/.venv/bin/python3` directly. `uv` is no longer in the responsible-process chain, so `uv self update` / brew upgrades stop invalidating the FDA grant. Re-grant is now only needed on Python *version* upgrades. Wrappers also log the resolved python path on every run for post-mortem clarity.
 - **TROUBLESHOOTING: clarified uv FDA re-grant** — toggling the FDA switch off/on is not sufficient after a uv upgrade; the entry must be removed (`−`) and re-added so TCC captures the new code signature
 - **Shared Claude Code settings tracked** (#9) — project `.claude/settings.json` is checked in; local overrides and worktrees stay ignored
-- **Loud-failure paths documented** (#8) — troubleshooting guide for the failure modes surfaced in #7
 
 ## Structure
 

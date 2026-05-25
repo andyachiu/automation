@@ -29,62 +29,10 @@ def call_briefing_model(
     model: str,
     system_prompt: str,
     user_prompt: str,
-    gcal_token: str,
-    gmail_token: str,
-) -> str:
-    """Call Claude with MCP servers and return raw response text."""
-    client = anthropic.Anthropic()
-
-    response = client.beta.messages.create(
-        model=model,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-        mcp_servers=[
-            {
-                "type": "url",
-                "url": "https://gcal.mcp.claude.com/mcp",
-                "name": "google-calendar",
-                "authorization_token": gcal_token,
-            },
-            {
-                "type": "url",
-                "url": "https://gmail.mcp.claude.com/mcp",
-                "name": "gmail",
-                "authorization_token": gmail_token,
-            },
-        ],
-        betas=["mcp-client-2025-04-04"],
-    )
-
-    failed = [
-        b for b in response.content
-        if getattr(b, "type", "") == "mcp_tool_result" and getattr(b, "is_error", False)
-    ]
-    if failed:
-        first = failed[0]
-        detail = " ".join(
-            getattr(c, "text", "") for c in getattr(first, "content", []) if getattr(c, "text", "")
-        ).strip()
-        raise RuntimeError(f"{len(failed)} MCP tool call(s) returned is_error; first: {detail}")
-
-    text_parts = [
-        block.text
-        for block in response.content
-        if hasattr(block, "text") and block.text
-    ]
-    return "\n".join(text_parts).strip()
-
-
-def call_briefing_model_direct(
-    *,
-    model: str,
-    system_prompt: str,
-    user_prompt: str,
     calendar_data: list[dict],
     email_data: list[dict],
 ) -> str:
-    """Call Claude with prefetched data appended to the prompt — no MCP, no tools."""
+    """Call Claude with prefetched calendar + email data appended to the prompt. No tools."""
     client = anthropic.Anthropic()
 
     context = (

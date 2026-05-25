@@ -1,61 +1,44 @@
 #!/usr/bin/env python3
 """
-check_allergy_shot.py — Check for allergy shot appointments via Claude + Google Calendar MCP.
+check_allergy_shot.py — Reminder iMessage if no allergy shot is scheduled
+in the next 30 days.
 
-Called by check_allergy_shot.sh, which handles token refresh and Keychain reads.
-Exits 0 if appointment found or reminder sent successfully.
-Exits 1 on API error.
+Reads tomorrow's calendar via the direct Google Calendar API (no MCP,
+no LLM), matches event titles locally, sends an iMessage if nothing matches.
+
+Called by check_allergy_shot.sh, which handles token refresh.
+Exits 0 on success (whether or not a reminder was needed).
+Exits 1 on configuration or API error.
 """
+
+from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from pathlib import Path
 
-import anthropic
+# Make `shared/` (in the scripts/ root) importable when run from this subdir.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-GCAL_TOKEN = os.environ.get("GCAL_TOKEN", "")
+from shared.google_api import list_calendar_events  # noqa: E402
+
+GOOGLE_TOKEN = os.environ.get("GOOGLE_TOKEN", "")
 IMESSAGE_TARGET = os.environ.get("IMESSAGE_TARGET", "")
 
-
-def build_prompt() -> str:
-    today = date.today()
-    cutoff = today + timedelta(days=30)
-    return f"""\
-Today is {today.strftime("%B %d, %Y")}. Search my Google Calendar for allergy shot appointments \
-between today and {cutoff.strftime("%B %d, %Y")}.
-Look for events matching 'allergy shot' or 'allergy' (exclude blood draws and consultations).
-
-After searching, reply with ONLY one of these two formats — no other text:
-  FOUND: [event summary] on [date]
-  NOT_FOUND
-"""
+# Match "allergy" / "allergy shot" but skip blood draws and consultations.
+ALLERGY_RE = re.compile(r"\ballergy\b", re.IGNORECASE)
+EXCLUDE_RE = re.compile(r"\b(blood\s*draw|consult(ation)?)\b", re.IGNORECASE)
 
 
-def check_calendar() -> str:
-    client = anthropic.Anthropic()
-
-    response = client.beta.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": build_prompt()}],
-        mcp_servers=[
-            {
-                "type": "url",
-                "url": "https://gcal.mcp.claude.com/mcp",
-                "name": "google-calendar",
-                "authorization_token": GCAL_TOKEN,
-            },
-        ],
-        betas=["mcp-client-2025-04-04"],
-    )
-
-    text_parts = [
-        block.text
-        for block in response.content
-        if hasattr(block, "text") and block.text
-    ]
-    return "\n".join(text_parts).strip()
+def find_upcoming_shot(events: list[dict]) -> dict | None:
+    for ev in events:
+        title = ev.get("summary", "")
+        if ALLERGY_RE.search(title) and not EXCLUDE_RE.search(title):
+            return ev
+    return None
 
 
 def send_imessage(message: str, target: str) -> bool:
@@ -71,48 +54,56 @@ def send_imessage(message: str, target: str) -> bool:
     return result.returncode == 0
 
 
-def main():
-    if not GCAL_TOKEN:
-        print("ERROR: GCAL_TOKEN not set. Run oauth_setup.py and refresh tokens first.", file=sys.stderr)
-        sys.exit(1)
+def main() -> int:
+    if not GOOGLE_TOKEN:
+        print("ERROR: GOOGLE_TOKEN not set. Run oauth_setup.py and refresh tokens first.",
+              file=sys.stderr)
+        return 1
 
-    print("Checking Google Calendar for allergy shot appointments...")
+    today = date.today()
+    cutoff = today + timedelta(days=30)
+
+    start = datetime.combine(today, datetime.min.time()).astimezone()
+    end = datetime.combine(cutoff, datetime.max.time()).astimezone()
+
+    print(f"Checking calendar {today} → {cutoff} for allergy shot appointments...")
     try:
-        result = check_calendar()
+        events = list_calendar_events(GOOGLE_TOKEN, start.isoformat(), end.isoformat())
     except Exception as e:
-        print(f"ERROR: API call failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        print(f"ERROR: Calendar fetch failed: {e}", file=sys.stderr)
+        return 1
 
-    print(f"Result: {result}")
+    shot = find_upcoming_shot(events)
+    if shot:
+        when = shot.get("start", "")
+        print(f"FOUND: {shot.get('summary')} on {when} — no reminder needed.")
+        return 0
 
-    if "FOUND:" in result and "NOT_FOUND" not in result:
-        print("Appointment found — no reminder needed.")
-    elif "NOT_FOUND" in result:
-        print("No appointment found. Sending iMessage reminder...")
-        from datetime import datetime
-        day = datetime.now().strftime("%A")
-        message = (
-            f"Allergy Shot Reminder ({day})\n\n"
-            "No allergy shot appointment in the next 30 days. Time to schedule one!\n\n"
-            "Book at Stanford via MyHealth or call the clinic."
-        )
-        if IMESSAGE_TARGET:
-            if send_imessage(message, IMESSAGE_TARGET):
-                print("iMessage sent.")
-            else:
-                print("iMessage send failed.", file=sys.stderr)
-                subprocess.run([
-                    "osascript", "-e",
-                    'display notification "No allergy shot scheduled in 30 days. Book one!" '
-                    'with title "Allergy Shot Reminder" sound name "default"'
-                ])
-        else:
-            print("No IMESSAGE_TARGET set — printing reminder:")
-            print(message)
-    else:
-        print(f"WARNING: Unexpected response from Claude: {result!r}", file=sys.stderr)
-        sys.exit(1)
+    print("NOT_FOUND. Sending iMessage reminder...")
+    day = datetime.now().strftime("%A")
+    message = (
+        f"Allergy Shot Reminder ({day})\n\n"
+        "No allergy shot appointment in the next 30 days. Time to schedule one!\n\n"
+        "Book at Stanford via MyHealth or call the clinic."
+    )
+
+    if not IMESSAGE_TARGET:
+        print("No IMESSAGE_TARGET set — printing reminder:")
+        print(message)
+        return 0
+
+    if send_imessage(message, IMESSAGE_TARGET):
+        print("iMessage sent.")
+        return 0
+
+    print("iMessage send failed.", file=sys.stderr)
+    subprocess.run([
+        "osascript", "-e",
+        'display notification "No allergy shot scheduled in 30 days. Book one!" '
+        'with title "Allergy Shot Reminder" sound name "default"',
+    ])
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

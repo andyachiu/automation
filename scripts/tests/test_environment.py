@@ -28,12 +28,9 @@ SCRIPTS_DIR = Path(__file__).parent.parent
 
 REQUIRED_KEYCHAIN_ENTRIES = [
     "morning-brief-anthropic-key",
-    "morning-brief-gcal-token",
-    "morning-brief-gmail-token",
-    "morning-brief-gcal-refresh-token",
-    "morning-brief-gmail-refresh-token",
-    "morning-brief-gcal-client",
-    "morning-brief-gmail-client",
+    "morning-brief-google-token",
+    "morning-brief-google-refresh-token",
+    "morning-brief-google-client",
     "morning-brief-imessage-target",
 ]
 
@@ -230,35 +227,20 @@ class TestKeychainEntries:
             "  security add-generic-password -a \"$USER\" -s \"morning-brief-anthropic-key\" -w \"sk-ant-...\""
         )
 
-    def test_gcal_client_is_valid_json(self):
+    def test_google_client_is_valid_json(self):
         import json
-        value = _keychain_get("morning-brief-gcal-client")
+        value = _keychain_get("morning-brief-google-client")
         if value is None:
             pytest.skip("Keychain entry missing — caught by test_keychain_entry_exists.")
         try:
             data = json.loads(value)
         except json.JSONDecodeError as e:
             pytest.fail(
-                f"'morning-brief-gcal-client' in Keychain is not valid JSON: {e}\n"
+                f"'morning-brief-google-client' in Keychain is not valid JSON: {e}\n"
                 "Re-run oauth_setup.py to regenerate client credentials."
             )
-        assert "client_id" in data, "morning-brief-gcal-client JSON missing 'client_id'."
-        assert "client_secret" in data, "morning-brief-gcal-client JSON missing 'client_secret'."
-
-    def test_gmail_client_is_valid_json(self):
-        import json
-        value = _keychain_get("morning-brief-gmail-client")
-        if value is None:
-            pytest.skip("Keychain entry missing — caught by test_keychain_entry_exists.")
-        try:
-            data = json.loads(value)
-        except json.JSONDecodeError as e:
-            pytest.fail(
-                f"'morning-brief-gmail-client' in Keychain is not valid JSON: {e}\n"
-                "Re-run oauth_setup.py to regenerate client credentials."
-            )
-        assert "client_id" in data, "morning-brief-gmail-client JSON missing 'client_id'."
-        assert "client_secret" in data, "morning-brief-gmail-client JSON missing 'client_secret'."
+        assert "client_id" in data, "morning-brief-google-client JSON missing 'client_id'."
+        assert "client_secret" in data, "morning-brief-google-client JSON missing 'client_secret'."
 
 
 def _keychain_setup_hint(service: str) -> str:
@@ -271,23 +253,16 @@ def _keychain_setup_hint(service: str) -> str:
             "Set it with:\n"
             "  security add-generic-password -a \"$USER\" -s \"morning-brief-imessage-target\" -w \"+15551234567\""
         ),
-        "morning-brief-gcal-token": (
-            "Run oauth_setup.py to authorize Google Calendar:\n  uv run oauth_setup.py"
+        "morning-brief-google-token": (
+            "Run oauth_setup.py to authorize Google APIs:\n  uv run oauth_setup.py"
         ),
-        "morning-brief-gmail-token": (
-            "Run oauth_setup.py to authorize Gmail:\n  uv run oauth_setup.py"
+        "morning-brief-google-refresh-token": (
+            "Run oauth_setup.py to authorize Google APIs:\n  uv run oauth_setup.py"
         ),
-        "morning-brief-gcal-refresh-token": (
-            "Run oauth_setup.py to authorize Google Calendar:\n  uv run oauth_setup.py"
-        ),
-        "morning-brief-gmail-refresh-token": (
-            "Run oauth_setup.py to authorize Gmail:\n  uv run oauth_setup.py"
-        ),
-        "morning-brief-gcal-client": (
-            "Run oauth_setup.py to register the OAuth client:\n  uv run oauth_setup.py"
-        ),
-        "morning-brief-gmail-client": (
-            "Run oauth_setup.py to register the OAuth client:\n  uv run oauth_setup.py"
+        "morning-brief-google-client": (
+            "Store your Google OAuth client credentials and run setup:\n"
+            "  export GOOGLE_OAUTH_CLIENT_ID=... GOOGLE_OAUTH_CLIENT_SECRET=...\n"
+            "  uv run oauth_setup.py"
         ),
     }
     return hints.get(service, f"Run the setup steps in README.md for '{service}'.")

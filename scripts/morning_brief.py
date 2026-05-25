@@ -10,12 +10,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from shared.briefing_common import (
-    call_briefing_model,
-    call_briefing_model_direct,
-    fetch_weather,
-    parse_json_response,
-)
+from shared.briefing_common import call_briefing_model, fetch_weather, parse_json_response
 from shared.briefing_common import send_imessage as _send_imessage
 from shared.google_api import list_calendar_events, list_unread_messages
 from shared.reminders import get_reminders
@@ -25,9 +20,7 @@ log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 IMESSAGE_TARGET = os.environ.get("IMESSAGE_TARGET", "")
-GCAL_TOKEN = os.environ.get("GCAL_TOKEN", "")
-GMAIL_TOKEN = os.environ.get("GMAIL_TOKEN", "")
-USE_MCP = os.environ.get("BRIEFING_USE_MCP", "") == "1"
+GOOGLE_TOKEN = os.environ.get("GOOGLE_TOKEN", "")
 MAX_MESSAGE_CHARS = 1200
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -55,120 +48,7 @@ def is_allergy_shot_day() -> bool:
 
 # ── Prompt building ───────────────────────────────────────────────────────────
 
-def build_user_prompt(weather: str, reminders_ctx: str = "") -> str:
-    now = datetime.now()
-    today = now.strftime("%A, %B %-d")
-    today_iso = now.strftime("%Y-%m-%d")
-    weather_line = f"\nCurrent weather: {weather}" if weather else ""
-
-    allergy_day = is_allergy_shot_day()
-    max_calls = 3 if allergy_day else 2
-
-    # Build numbered steps
-    steps = []
-    n = 1
-
-    steps.append(
-        f"{n}. List only today's events ({today_iso}, midnight to 11:59 PM local time; "
-        "format each as 'TIME — TITLE'; flag anything back-to-back or needing prep in the title. "
-        "Do not include events from other days."
-    )
-    n += 1
-
-    if allergy_day:
-        steps.append(
-            f"{n}. Search my calendar for allergy shot appointments (events matching "
-            "'allergy' or 'allergy shot') in the next 30 days. Exclude blood draws and consultations."
-        )
-        n += 1
-
-    if is_weekend():
-        steps.append(
-            f"{n}. Check the 20 most recent emails. Separate into two groups:\n"
-            "   URGENT: directly addressed to you in To:, from a real person, time-sensitive language, received today.\n"
-            "   HIGHLIGHTS: notable non-urgent items — substantive newsletters, shipping/order updates, anything worth knowing. Skip promos and automated noise."
-        )
-    else:
-        steps.append(
-            f"{n}. Check the 50 most recent unread emails in my inbox (not sent, not search). Separate into two groups:\n"
-            "   URGENT: all must be true — directly addressed in To: (not CC/mailing list), "
-            "from a real person (not newsletter or automated sender), "
-            "time-sensitive language (urgent, asap, today, deadline, reply, action required), "
-            "received in the last 24 hours and unanswered.\n"
-            "   HIGHLIGHTS: notable non-urgent items — substantive newsletters (VC/tech digests, news), "
-            "shipping/order updates, anything worth a quick note. Skip promos and automated noise."
-        )
-    n += 1
-
-    steps.append(f"{n}. Close with one sentence: the #1 thing I should focus on today.")
-    n += 1
-
-    if is_monday():
-        steps.append(
-            f"{n}. Since it's Monday, add a brief week-ahead section with key events Mon-Fri (2 lines max)."
-        )
-        n += 1
-
-    if is_friday():
-        steps.append(
-            f"{n}. Since it's Friday, add a next-week kickoff: first Monday meeting "
-            "and any notable upcoming events (2 items max)."
-        )
-        n += 1
-
-    # JSON schema
-    json_fields = [
-        '  "summary": one-line overview (e.g. "3 meetings, 1 urgent email")',
-        '  "events": list of strings formatted as "TIME — TITLE" (e.g. ["9:00 AM — Standup", "2:00 PM — 1:1 (prep needed)"]); empty list if no events',
-        '  "urgent_emails": list of strings formatted as "Sender: one-line summary" for urgent emails only; empty list if none',
-        '  "email_highlights": list of strings formatted as "Sender: one-line summary" for notable non-urgent emails; empty list if nothing worth noting',
-        '  "focus": one sentence, the #1 priority for today',
-    ]
-    if allergy_day:
-        json_fields.append(
-            '  "allergy_shot": "Next shot: [Weekday Mon DD]" or "Next shot: [Weekday Mon DD] at [location]" '
-            'only if a location is actually set in the event; '
-            'or "No allergy shot in next 30 days — book one at Stanford MyHealth" if none found'
-        )
-    if is_monday():
-        json_fields.append('  "week_preview": list of strings formatted as "DAY — EVENT" for Mon-Fri key events (Monday only)')
-    if is_friday():
-        json_fields.append('  "week_kickoff": list of strings formatted as "DAY — EVENT" for key upcoming events (Friday only)')
-
-    steps_text = "\n".join(steps)
-    fields_text = "\n".join(json_fields)
-
-    reminders_block = ""
-    if reminders_ctx:
-        json_fields.append('  "reminders": list of strings — copy from the reminders provided below (overdue first, then due today); empty list if none')
-        fields_text = "\n".join(json_fields)
-        reminders_block = f"\n\nApple Reminders (already fetched, do NOT use a tool call for these):\n{reminders_ctx}"
-
-    return f"""\
-Today is {today} ({today_iso}).{weather_line}
-
-Using my Google Calendar and Gmail ({max_calls} tool calls max):
-
-{steps_text}
-
-Return ONLY a valid JSON object with these keys:
-{fields_text}
-
-Return only valid JSON, no other text.{reminders_block}
-"""
-
-
 SYSTEM_PROMPT = """\
-You are a concise personal assistant writing a morning briefing delivered as an iMessage.
-Return only a valid JSON object. Do not include any text before or after the JSON object — \
-no preamble, no explanation, no markdown, no code fences.
-Be terse and factual. All string values must be plain text (no asterisks, no bullet symbols).
-Use exactly the number of tool calls specified — no more. Fetch all data first, then compose \
-your response entirely from what you retrieved.
-"""
-
-
-SYSTEM_PROMPT_DIRECT = """\
 You are a concise personal assistant writing a morning briefing delivered as an iMessage.
 Return only a valid JSON object. Do not include any text before or after the JSON object — \
 no preamble, no explanation, no markdown, no code fences.
@@ -178,7 +58,7 @@ entirely from what is given.
 """
 
 
-def build_user_prompt_direct(weather: str, reminders_ctx: str = "") -> str:
+def build_user_prompt(weather: str, reminders_ctx: str = "") -> str:
     now = datetime.now()
     today = now.strftime("%A, %B %-d")
     today_iso = now.strftime("%Y-%m-%d")
@@ -279,17 +159,6 @@ Return only valid JSON, no other text.{reminders_block}
 # ── Claude call ───────────────────────────────────────────────────────────────
 
 def get_briefing(weather: str, reminders_ctx: str = "") -> str:
-    """Call Claude with MCP servers and return raw response text."""
-    return call_briefing_model(
-        model=MODEL,
-        system_prompt=SYSTEM_PROMPT,
-        user_prompt=build_user_prompt(weather, reminders_ctx),
-        gcal_token=GCAL_TOKEN,
-        gmail_token=GMAIL_TOKEN,
-    )
-
-
-def get_briefing_direct(weather: str, reminders_ctx: str = "") -> str:
     """Fetch calendar/email directly via Google APIs, then call Claude without tools."""
     now = datetime.now()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -298,15 +167,15 @@ def get_briefing_direct(weather: str, reminders_ctx: str = "") -> str:
     time_min = start.astimezone().isoformat()
     time_max = end.astimezone().isoformat()
 
-    events = list_calendar_events(GCAL_TOKEN, time_min, time_max)
+    events = list_calendar_events(GOOGLE_TOKEN, time_min, time_max)
     max_emails = 20 if is_weekend() else 50
-    emails = list_unread_messages(GMAIL_TOKEN, max_results=max_emails)
+    emails = list_unread_messages(GOOGLE_TOKEN, max_results=max_emails)
     log.info("Direct fetch: %d events, %d unread emails", len(events), len(emails))
 
-    return call_briefing_model_direct(
+    return call_briefing_model(
         model=MODEL,
-        system_prompt=SYSTEM_PROMPT_DIRECT,
-        user_prompt=build_user_prompt_direct(weather, reminders_ctx),
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=build_user_prompt(weather, reminders_ctx),
         calendar_data=events,
         email_data=emails,
     )
@@ -452,11 +321,7 @@ def main():
         log.info("Reminders: %d overdue, %d due today", len(reminders_data["overdue"]), len(reminders_data["due"]))
 
     try:
-        if USE_MCP:
-            log.info("Using MCP path (BRIEFING_USE_MCP=1)")
-            raw = get_briefing(weather, reminders_ctx)
-        else:
-            raw = get_briefing_direct(weather, reminders_ctx)
+        raw = get_briefing(weather, reminders_ctx)
         log.info("Received briefing (%d chars raw)", len(raw))
     except Exception as e:
         log.error("API error: %s", e)
