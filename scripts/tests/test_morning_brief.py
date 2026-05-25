@@ -230,9 +230,9 @@ class TestFormatBriefing:
 class TestSendImessage:
     @pytest.fixture(autouse=True)
     def _stub_blastdoor(self):
-        # Default: BlastDoor healthy (0 instances) so pre-flight doesn't short-circuit.
+        # Default: BlastDoor healthy (0 PIDs) so pre-flight doesn't short-circuit.
         # Individual tests can override by patching directly.
-        with patch("shared.briefing_common._blastdoor_pid_count", return_value=0):
+        with patch("shared.briefing_common._blastdoor_pids", return_value=[]):
             yield
 
     def test_returns_true_on_success(self):
@@ -254,29 +254,44 @@ class TestSendImessage:
             morning_brief.send_imessage("Hello", "")
         mock_run.assert_not_called()
 
-    def test_returns_false_when_blastdoor_wedged(self):
+    def test_auto_recovers_when_blastdoor_wedged(self):
+        # Pile-up at pre-flight; reap succeeds (post-reap probe returns 1 PID).
+        probe_returns = iter([[100, 200, 300], [300]])
         mock_log = MagicMock()
-        with patch("shared.briefing_common._blastdoor_pid_count", return_value=3), \
+        with patch("shared.briefing_common._blastdoor_pids", side_effect=lambda: next(probe_returns)), \
+             patch("shared.briefing_common.os.kill") as mock_kill, \
+             patch("shared.briefing_common.time.sleep"), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run, \
+             patch("morning_brief.log", mock_log):
+            assert morning_brief.send_imessage("Hello", "+15551234567") is True
+        # Kept newest (300), killed older two (100, 200).
+        killed_pids = sorted(call.args[0] for call in mock_kill.call_args_list)
+        assert killed_pids == [100, 200]
+        mock_run.assert_called_once()  # osascript still invoked after reap
+
+    def test_returns_false_when_blastdoor_stays_wedged_after_reap(self):
+        # Reap fires but post-reap probe still shows pile-up — fail loud.
+        probe_returns = iter([[100, 200, 300], [200, 300]])
+        mock_log = MagicMock()
+        with patch("shared.briefing_common._blastdoor_pids", side_effect=lambda: next(probe_returns)), \
+             patch("shared.briefing_common.os.kill"), \
+             patch("shared.briefing_common.time.sleep"), \
              patch("subprocess.run") as mock_run, \
              patch("morning_brief.log", mock_log):
             assert morning_brief.send_imessage("Hello", "+15551234567") is False
         mock_run.assert_not_called()  # osascript must NOT be invoked
-        # Verify the actionable message was logged.
-        error_calls = [c for c in mock_log.error.call_args_list]
-        assert error_calls, "expected an error log when BlastDoor is wedged"
-        msg = error_calls[0][0][0]
-        assert "MessagesBlastDoorService" in msg
-        assert "Activity Monitor" in msg
+        error_calls = mock_log.error.call_args_list
+        assert error_calls and "BlastDoor still wedged" in error_calls[0][0][0]
 
     def test_send_proceeds_when_blastdoor_count_is_one(self):
-        with patch("shared.briefing_common._blastdoor_pid_count", return_value=1), \
+        with patch("shared.briefing_common._blastdoor_pids", return_value=[42]), \
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
-        mock_run.assert_called_once()  # osascript was invoked
+        mock_run.assert_called_once()
 
     def test_send_proceeds_when_pgrep_probe_fails(self):
-        # If the pgrep probe itself errors (returns -1), don't block sends.
-        with patch("shared.briefing_common._blastdoor_pid_count", return_value=-1), \
+        # If the pgrep probe itself errors (returns None), don't block sends.
+        with patch("shared.briefing_common._blastdoor_pids", return_value=None), \
              patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
         mock_run.assert_called_once()

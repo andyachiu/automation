@@ -4,7 +4,10 @@ Shared helpers for briefing scripts.
 
 import json
 import logging
+import os
+import signal
 import subprocess
+import time
 import urllib.request
 
 import anthropic
@@ -83,13 +86,12 @@ def parse_json_response(
         return None, f"{header}\n\n{raw}"
 
 
-def _blastdoor_pid_count() -> int:
-    """Return the number of running MessagesBlastDoorService instances.
+def _blastdoor_pids() -> list[int] | None:
+    """Return the list of MessagesBlastDoorService PIDs, or None if the probe failed.
 
-    Healthy state on macOS Tahoe is 0 or 1. On macOS 26.x there is a regression
-    where workers from prior Messages sessions don't get reaped, and once they
-    pile up Messages.app stops servicing AppleEvents (osascript hangs with -1712).
-    Returns -1 if the probe itself fails.
+    Healthy state on macOS Tahoe is 0 or 1 PID. On macOS 26.x there is a regression
+    where workers from prior Messages sessions don't get reaped, and once they pile
+    up Messages.app stops servicing AppleEvents (osascript hangs with -1712).
     """
     try:
         result = subprocess.run(
@@ -97,10 +99,42 @@ def _blastdoor_pid_count() -> int:
             capture_output=True, text=True, timeout=5,
         )
     except (subprocess.TimeoutExpired, OSError):
-        return -1
+        return None
     if result.returncode not in (0, 1):  # 1 = no matches, valid
-        return -1
-    return len([line for line in result.stdout.splitlines() if line.strip()])
+        return None
+    return [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+
+
+def _reap_blastdoor_orphans(pids: list[int], log: logging.Logger) -> int:
+    """SIGKILL every BlastDoor worker except the newest (highest PID). Returns count killed.
+
+    Verified 2026-05-25 (macOS 26.x): `kill -9 <PID>` succeeds on these workers even
+    though `killall MessagesBlastDoorService` fails. SIP blocks `killall`-by-name on
+    Apple-signed XPC services but does NOT block explicit-PID SIGKILL when the worker
+    is user-owned. Outgoing iMessage sends via osascript do not appear to depend on
+    BlastDoor (it's the inbound-parse sandbox); Messages.app spawns a fresh worker
+    on demand for any send that follows.
+    """
+    if len(pids) <= 1:
+        return 0
+
+    # Keep the highest PID — most-recently-spawned, most likely to be a healthy
+    # current-session worker. Kill the rest.
+    pids_sorted = sorted(pids)
+    to_kill = pids_sorted[:-1]
+    keep = pids_sorted[-1]
+
+    killed = 0
+    for pid in to_kill:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            killed += 1
+        except ProcessLookupError:
+            pass  # already gone
+        except OSError as e:
+            log.warning("Could not SIGKILL BlastDoor PID %d: %s", pid, e)
+    log.info("BlastDoor auto-recovery: killed %d orphan(s), kept PID %d", killed, keep)
+    return killed
 
 
 def send_imessage(
@@ -110,23 +144,36 @@ def send_imessage(
     max_message_chars: int,
     log: logging.Logger,
 ) -> bool:
-    """Send an iMessage. If no target is configured, print to stdout instead."""
+    """Send an iMessage. If no target is configured, print to stdout instead.
+
+    On BlastDoor pile-up (>1 worker, Tahoe regression), attempts auto-recovery
+    via SIGKILL of orphan workers before sending. Falls back to fail-loud if
+    recovery doesn't bring the count down to ≤1.
+    """
     if not target:
         log.warning("No IMESSAGE_TARGET set — printing to stdout")
         print(message)
         return True
 
-    pid_count = _blastdoor_pid_count()
-    if pid_count > 1:
-        log.error(
-            "Skipping iMessage send: %d MessagesBlastDoorService instances detected (healthy is ≤1). "
-            "Messages.app is wedged and the AppleEvent will time out with -1712. "
-            "Recovery: force-quit Messages.app via Activity Monitor (killall fails under SIP because "
-            "MessagesBlastDoorService is an Apple-signed XPC service), then relaunch Messages.app. "
-            "Verify with: pgrep -lf MessagesBlastDoorService (should show 0–1 PIDs).",
-            pid_count,
+    pids = _blastdoor_pids()
+    if pids is None:
+        log.warning("BlastDoor probe failed — proceeding without pre-flight check")
+    elif len(pids) > 1:
+        log.warning(
+            "BlastDoor pile-up detected: %d workers (PIDs %s). Attempting auto-recovery.",
+            len(pids), pids,
         )
-        return False
+        _reap_blastdoor_orphans(pids, log)
+        time.sleep(1.5)  # give launchd a beat to settle
+        pids = _blastdoor_pids() or []
+        if len(pids) > 1:
+            log.error(
+                "Skipping iMessage send: BlastDoor still wedged after auto-recovery "
+                "(%d workers remain: %s). Manual fix: force-quit Messages.app via "
+                "Activity Monitor or `kill -9 <PID>` on the orphans, then relaunch Messages.",
+                len(pids), pids,
+            )
+            return False
 
     if len(message) > max_message_chars:
         message = message[: max_message_chars - 3] + "..."
