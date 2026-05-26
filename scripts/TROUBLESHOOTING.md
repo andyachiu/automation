@@ -280,9 +280,67 @@ The `responsible_path=` field tells you exactly which binary TCC is checking. Th
 
 Any launchd agent in this project (morning brief, evening brief) that reads TCC-protected resources (Reminders DB, etc.) via the venv python. The FDA grant on the resolved python binary covers all of them. The allergy shot check still uses `uv run` and does not currently touch TCC-protected paths; if that changes, port it to the venv-python pattern.
 
+### Running briefs manually from a terminal needs a separate FDA grant
+
+The grant on the venv python only covers the **launchd-spawned** path. When you run `bash run_morning_brief.sh` directly from a terminal (Kitty, Terminal.app, iTerm, etc.), TCC walks a different responsible-process chain and lands on the **terminal app**, not the venv python.
+
+Symptom: launchd-driven briefs deliver reminders fine, but `bash run_morning_brief.sh` from your terminal logs `Permission denied reading ... Stores`.
+
+Fix: grant FDA to the terminal app itself.
+
+1. System Settings → Privacy & Security → Full Disk Access → `+`
+2. `Cmd+Shift+G`, paste `/Applications/kitty.app` (or `/Applications/Utilities/Terminal.app`, `/Applications/iTerm.app`, etc.)
+3. **Cmd-Q the terminal completely and relaunch** — TCC grants only apply to processes spawned after the grant.
+4. Verify: `ls ~/Library/Group\ Containers/group.com.apple.reminders/Container_v1/Stores/` from a fresh terminal window should list `.sqlite` files instead of erroring.
+
+Tradeoff: granting FDA to a terminal means *anything* run from any window of that terminal gets FDA. For a single-user personal machine this is the standard tradeoff; if multi-user or shared-machine, prefer the Terminal-app-only grant and use Terminal.app for brief runs.
+
 ### Recurrence
 
 Only on Python version upgrades (e.g., uv-managed interpreter bumps from 3.13.6 → 3.13.7). `uv self update` no longer invalidates the grant. There is no automatic detection — the symptom is the loud error above in `~/.morning_brief.log`, and the `Using python:` log line will show a new path on the day it breaks.
+
+---
+
+## Brief Did Not Fire at Scheduled Time
+
+### Symptoms
+
+The scheduled morning brief at 7am (or evening brief at 9pm, etc.) didn't deliver. No iMessage arrived; nothing in `~/.morning_brief.log` for the expected time.
+
+### Root Cause
+
+launchd `StartCalendarInterval` jobs only fire when the Mac is awake. If the Mac was sleeping at the scheduled time, the job fires on next wake — which could be minutes or hours later depending on lid state and activity.
+
+### How to Diagnose
+
+```bash
+# Check what's actually loaded
+launchctl list | grep andychiu
+
+# Check scheduled wakes (look for "wakepoweron at H:MM... every day")
+pmset -g sched
+
+# Power assertions — anything currently keeping the Mac awake?
+pmset -g assertions | grep -E "PreventUserIdleSystemSleep|NoDisplaySleepAssertion"
+```
+
+### How to Fix
+
+Schedule a system wake five minutes before the earliest daily brief:
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRFSU 06:55:00
+```
+
+Verify with `pmset -g sched` (expect `wakepoweron at 6:55AM every day`). Cancel with `sudo pmset repeat cancel`.
+
+### Limitations
+
+- `pmset` only allows one repeating wake. A single 6:55am wake covers the 7am weekday brief; weekend (9am) briefs fire best-effort — the Mac wakes early and may go back to sleep before 9am.
+- `wakeorpoweron` wakes the Mac from sleep but does **not** boot it from a clean shutdown. If the laptop is fully powered off, the brief misses entirely and fires on next login.
+- On battery: macOS may refuse to wake at low battery levels. Plug in for reliability on travel.
+
+For full decoupling from laptop state, run the brief on an always-on host (Mac mini at home, etc.) and have it dispatch iMessage from there. Not currently implemented.
 
 ---
 

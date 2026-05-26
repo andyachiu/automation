@@ -86,6 +86,27 @@ launchctl list | grep andychiu
 
 Default schedule: deploy at 6am, morning brief at 7am weekdays / 9am weekends, evening brief at 9pm daily.
 
+### Mac state requirements
+
+launchd's `StartCalendarInterval` only fires when the Mac is awake. If the Mac is sleeping at the scheduled time, the job fires on next wake (which may be much later). To guarantee on-time delivery — including from sleep or lid-closed travel scenarios — schedule a system wake five minutes before the earliest daily brief:
+
+```bash
+sudo pmset repeat wakeorpoweron MTWRFSU 06:55:00
+```
+
+Verify with `pmset -g sched`. Cancel with `sudo pmset repeat cancel`.
+
+| Mac state at brief time | Brief fires? |
+|---|---|
+| Awake (lid open or display sleep, system awake) | ✓ |
+| Sleeping, on power, `pmset` wake set | ✓ (Mac wakes, brief runs, iMessage delivers to iPhone via iCloud) |
+| Sleeping, on battery | Usually ✓, but macOS may refuse to wake at low battery |
+| **Fully shut down** | ✗ — `wakeorpoweron` won't boot a powered-off Mac. Brief fires only after next login. |
+
+Limitation: `pmset` allows only one repeating wake event, so a single wake time has to cover both the 7am weekday and 9am weekend brief. Setting it to `06:55:00` works for weekdays; on weekends the Mac wakes 2h early and may go back to sleep before the 9am fire. Weekend reliability is best-effort.
+
+For decoupled-from-laptop reliability (works even when laptop is off), the brief would need to run on a separate always-on host (Mac mini, home server) — not implemented.
+
 Logs:
 - `~/.morning_brief.log` — morning briefing run logs
 - `~/.evening_brief.log` — evening briefing run logs
