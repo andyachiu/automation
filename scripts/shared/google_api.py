@@ -3,9 +3,12 @@ Direct Google API client — fallback when MCP servers are unavailable.
 """
 
 import json
+import logging
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+
+log = logging.getLogger(__name__)
 
 
 def _get_json(url: str, token: str, timeout: int = 15) -> dict:
@@ -53,22 +56,26 @@ def list_calendar_events(
     return out
 
 
-def _fetch_message_metadata(token: str, msg_id: str) -> dict:
+def _fetch_message_metadata(token: str, msg_id: str) -> dict | None:
     url = (
         f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
         "?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"
     )
-    data = _get_json(url, token)
-    headers = {
-        h["name"].lower(): h["value"]
-        for h in data.get("payload", {}).get("headers", [])
-    }
-    return {
-        "from": headers.get("from", ""),
-        "subject": headers.get("subject", ""),
-        "snippet": data.get("snippet", ""),
-        "date": headers.get("date", ""),
-    }
+    try:
+        data = _get_json(url, token)
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in data.get("payload", {}).get("headers", [])
+        }
+        return {
+            "from": headers.get("from", ""),
+            "subject": headers.get("subject", ""),
+            "snippet": data.get("snippet", ""),
+            "date": headers.get("date", ""),
+        }
+    except Exception as exc:
+        log.warning("Failed to fetch message metadata for %s: %s", msg_id, exc)
+        return None
 
 
 def list_unread_messages(token: str, max_results: int = 50) -> list[dict]:
@@ -82,4 +89,5 @@ def list_unread_messages(token: str, max_results: int = 50) -> list[dict]:
         return []
 
     with ThreadPoolExecutor(max_workers=10) as pool:
-        return list(pool.map(lambda i: _fetch_message_metadata(token, i), ids))
+        results = list(pool.map(lambda i: _fetch_message_metadata(token, i), ids))
+    return [r for r in results if r is not None]

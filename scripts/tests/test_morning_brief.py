@@ -312,7 +312,11 @@ class TestSendImessage:
     def _stub_blastdoor(self):
         # Default: BlastDoor healthy (0 PIDs) so pre-flight doesn't short-circuit.
         # Individual tests can override by patching directly.
-        with patch("shared.briefing_common._blastdoor_pids", return_value=[]):
+        with (
+            patch("shared.briefing_common._blastdoor_pids", return_value=[]),
+            patch("shared.briefing_common._show_macos_notification") as mock_notify,
+        ):
+            self.mock_notify = mock_notify
             yield
 
     def test_returns_true_on_success(self):

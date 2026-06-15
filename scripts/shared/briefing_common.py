@@ -14,17 +14,20 @@ import anthropic
 
 
 def fetch_weather(user_agent: str, log: logging.Logger) -> str:
-    """Fetch one-line weather summary from wttr.in. Returns empty string on failure."""
-    try:
-        req = urllib.request.Request(
-            "https://wttr.in/?format=3&u",
-            headers={"User-Agent": user_agent},
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.read().decode("utf-8").strip()
-    except Exception as exc:
-        log.warning("Weather fetch failed: %s", exc)
-        return ""
+    """Fetch one-line weather summary from wttr.in with transient retry. Returns empty string on failure."""
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(
+                "https://wttr.in/?format=3&u",
+                headers={"User-Agent": user_agent},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.read().decode("utf-8").strip()
+        except Exception as exc:
+            log.warning("Weather fetch attempt %d failed: %s", attempt + 1, exc)
+            if attempt < 1:
+                time.sleep(2)
+    return ""
 
 
 def call_briefing_model(
@@ -139,6 +142,16 @@ def _reap_blastdoor_orphans(pids: list[int], log: logging.Logger) -> int:
     return killed
 
 
+def _show_macos_notification(title: str, text: str) -> None:
+    escaped_title = title.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_text = text.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'display notification "{escaped_text}" with title "{escaped_title}" sound name "default"'
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+    except Exception:
+        pass
+
+
 def send_imessage(
     message: str,
     target: str,
@@ -177,6 +190,10 @@ def send_imessage(
                 len(pids),
                 pids,
             )
+            _show_macos_notification(
+                "Briefing Delivery Failed",
+                "BlastDoor service is wedged. Check logs.",
+            )
             return False
 
     if len(message) > max_message_chars:
@@ -195,6 +212,10 @@ def send_imessage(
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     if result.returncode != 0:
         log.error("AppleScript error: %s", result.stderr.strip())
+        _show_macos_notification(
+            "Briefing Delivery Failed",
+            "iMessage send failed. Check logs.",
+        )
         return False
 
     return True

@@ -75,8 +75,8 @@ if [[ "$current_branch" != "$AUTOMATION_GIT_BRANCH" ]]; then
     exit 1
 fi
 
-if [[ -n "$("$GIT_BIN" -C "$REPO_ROOT" status --porcelain)" ]]; then
-    log_err "Refusing deploy: repo has uncommitted changes"
+if ! "$GIT_BIN" -C "$REPO_ROOT" diff-index --quiet HEAD --; then
+    log_err "Refusing deploy: repo has uncommitted tracked changes"
     exit 1
 fi
 
