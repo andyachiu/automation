@@ -3,14 +3,17 @@
 morning_brief.py — Daily AI briefing sent to yourself via iMessage
 """
 
-import json
 import logging
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from shared.briefing_common import call_briefing_model, fetch_weather, parse_json_response
+from shared.briefing_common import (
+    call_briefing_model,
+    fetch_weather,
+    parse_json_response,
+)
 from shared.briefing_common import send_imessage as _send_imessage
 from shared.google_api import list_calendar_events, list_unread_messages
 from shared.reminders import get_reminders
@@ -26,6 +29,7 @@ MODEL = "claude-haiku-4-5-20251001"
 
 # ── Weather ───────────────────────────────────────────────────────────────────
 
+
 def get_weather() -> str:
     """Fetch one-line weather summary from wttr.in. Returns empty string on failure."""
     return fetch_weather("morning-brief/1.0", log)
@@ -33,14 +37,18 @@ def get_weather() -> str:
 
 # ── Day helpers ───────────────────────────────────────────────────────────────
 
+
 def is_monday() -> bool:
     return datetime.now().weekday() == 0
+
 
 def is_friday() -> bool:
     return datetime.now().weekday() == 4
 
+
 def is_weekend() -> bool:
     return datetime.now().weekday() >= 5
+
 
 def is_allergy_shot_day() -> bool:
     return datetime.now().weekday() in (0, 2, 4)  # Mon, Wed, Fri
@@ -126,17 +134,23 @@ def build_user_prompt(weather: str, reminders_ctx: str = "") -> str:
     if allergy_day:
         json_fields.append(
             '  "allergy_shot": "Next shot: [Weekday Mon DD]" or "Next shot: [Weekday Mon DD] at [location]" '
-            'only if a location is actually set in the event; '
+            "only if a location is actually set in the event; "
             'or "No allergy shot in next 30 days — book one at Stanford MyHealth" if none found'
         )
     if is_monday():
-        json_fields.append('  "week_preview": list of strings formatted as "DAY — EVENT" for Mon-Fri key events (Monday only)')
+        json_fields.append(
+            '  "week_preview": list of strings formatted as "DAY — EVENT" for Mon-Fri key events (Monday only)'
+        )
     if is_friday():
-        json_fields.append('  "week_kickoff": list of strings formatted as "DAY — EVENT" for key upcoming events (Friday only)')
+        json_fields.append(
+            '  "week_kickoff": list of strings formatted as "DAY — EVENT" for key upcoming events (Friday only)'
+        )
 
     reminders_block = ""
     if reminders_ctx:
-        json_fields.append('  "reminders": list of strings — copy from the reminders provided below (overdue first, then due today); empty list if none')
+        json_fields.append(
+            '  "reminders": list of strings — copy from the reminders provided below (overdue first, then due today); empty list if none'
+        )
         reminders_block = f"\n\nApple Reminders (already fetched):\n{reminders_ctx}"
 
     steps_text = "\n".join(steps)
@@ -157,6 +171,7 @@ Return only valid JSON, no other text.{reminders_block}
 
 
 # ── Claude call ───────────────────────────────────────────────────────────────
+
 
 def get_briefing(weather: str, reminders_ctx: str = "") -> str:
     """Fetch calendar/email directly via Google APIs, then call Claude without tools."""
@@ -183,6 +198,7 @@ def get_briefing(weather: str, reminders_ctx: str = "") -> str:
 
 # ── Format briefing ───────────────────────────────────────────────────────────
 
+
 def _try_append(lines: list[str], candidate: list[str]) -> bool:
     """Append candidate lines if they fit within MAX_MESSAGE_CHARS. Returns True if added."""
     if len("\n".join(lines + candidate)) <= MAX_MESSAGE_CHARS:
@@ -200,82 +216,106 @@ def format_briefing(raw: str, weather: str) -> str:
     if fallback:
         return fallback
 
-    lines: list[str] = [header]
-
-    # Schedule
+    # Extract all components
     events = data.get("events", [])
-    sched = ["", "📅 SCHEDULE"]
-    sched += [f"• {e}" for e in events] if events else ["Nothing on the calendar today — enjoy the open day!"]
-    if not _try_append(lines, sched):
-        _try_append(lines, ["", "📅 SCHEDULE"])
-        for e in events:
-            if not _try_append(lines, [f"• {e}"]):
-                break
-
-    # Urgent emails — only shown if present
     urgent = data.get("urgent_emails", [])
-    if urgent:
-        urgent_sec = ["", "🚨 URGENT"] + [f"• {e}" for e in urgent]
-        if not _try_append(lines, urgent_sec):
-            if _try_append(lines, ["", "🚨 URGENT"]):
-                for e in urgent:
-                    if not _try_append(lines, [f"• {e}"]):
-                        break
-
-    # Email highlights
     emails = data.get("email_highlights", [])
-    email_sec = ["", "📧 HIGHLIGHTS"]
-    email_sec += [f"• {e}" for e in emails] if emails else ["Inbox is quiet — nothing notable."]
-    if not _try_append(lines, email_sec):
-        if _try_append(lines, ["", "📧 HIGHLIGHTS"]):
-            for e in emails:
-                if not _try_append(lines, [f"• {e}"]):
-                    break
-
-    # Reminders
     reminders = data.get("reminders", [])
-    if reminders:
-        rem_sec = ["", "✅ REMINDERS"] + [f"• {r}" for r in reminders]
-        if not _try_append(lines, rem_sec):
-            if _try_append(lines, ["", "✅ REMINDERS"]):
-                for r in reminders:
-                    if not _try_append(lines, [f"• {r}"]):
-                        break
-
-    # Allergy shot
     allergy = data.get("allergy_shot", data.get("allergy_shot_reminder", ""))
-    if allergy:
-        _try_append(lines, ["", "🩹 ALLERGY SHOT", allergy])
-
-    # Week preview (Monday)
     week_preview = data.get("week_preview", [])
-    if week_preview:
-        wp = ["", "📅 WEEK AHEAD"] + [f"• {e}" for e in week_preview]
-        if not _try_append(lines, wp):
-            if _try_append(lines, ["", "📅 WEEK AHEAD"]):
-                for e in week_preview:
-                    if not _try_append(lines, [f"• {e}"]):
-                        break
-
-    # Week kickoff (Friday)
     week_kickoff = data.get("week_kickoff", [])
-    if week_kickoff:
-        wk = ["", "📅 NEXT WEEK"] + [f"• {e}" for e in week_kickoff]
-        if not _try_append(lines, wk):
-            if _try_append(lines, ["", "📅 NEXT WEEK"]):
-                for e in week_kickoff:
-                    if not _try_append(lines, [f"• {e}"]):
-                        break
-
-    # Focus — lowest priority
     focus = data.get("focus", "")
-    if focus:
-        _try_append(lines, ["", "🎯 FOCUS", focus])
 
-    return "\n".join(lines)
+    # Helper function to assemble components into a single message
+    def assemble(evs, urg, higs, rems, allg, wp, wk, foc) -> str:
+        lines = [header]
+
+        # Schedule
+        sched = ["", "📅 SCHEDULE"]
+        sched += (
+            [f"• {e}" for e in evs]
+            if evs
+            else ["Nothing on the calendar today — enjoy the open day!"]
+        )
+        lines.extend(sched)
+
+        # Urgent emails
+        if urg:
+            lines.extend(["", "🚨 URGENT"] + [f"• {e}" for e in urg])
+
+        # Highlights
+        h_sec = ["", "📧 HIGHLIGHTS"]
+        h_sec += (
+            [f"• {e}" for e in higs] if higs else ["Inbox is quiet — nothing notable."]
+        )
+        lines.extend(h_sec)
+
+        # Reminders
+        if rems:
+            lines.extend(["", "✅ REMINDERS"] + [f"• {r}" for r in rems])
+
+        # Allergy
+        if allg:
+            lines.extend(["", "🩹 ALLERGY SHOT", allg])
+
+        # Week preview (Monday)
+        if wp:
+            lines.extend(["", "📅 WEEK AHEAD"] + [f"• {e}" for e in wp])
+
+        # Week kickoff (Friday)
+        if wk:
+            lines.extend(["", "📅 NEXT WEEK"] + [f"• {e}" for e in wk])
+
+        # Focus
+        if foc:
+            lines.extend(["", "🎯 FOCUS", foc])
+
+        return "\n".join(lines)
+
+    # Clone components for pruning
+    evs_p = list(events)
+    urg_p = list(urgent)
+    higs_p = list(emails)
+    rems_p = list(reminders)
+    wp_p = list(week_preview)
+    wk_p = list(week_kickoff)
+
+    # Initial assembly
+    msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+
+    # Pruning Loop: if message exceeds MAX_MESSAGE_CHARS, we prune from least important to most important.
+    # Prune Highlights
+    while len(msg) > MAX_MESSAGE_CHARS and higs_p:
+        higs_p.pop()
+        msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+
+    # Prune Week Preview / Kickoff
+    if len(msg) > MAX_MESSAGE_CHARS and wp_p:
+        wp_p = []
+        msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+    if len(msg) > MAX_MESSAGE_CHARS and wk_p:
+        wk_p = []
+        msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+
+    # Prune Schedule (events) - down to 1 event if it was not empty
+    while len(msg) > MAX_MESSAGE_CHARS and len(evs_p) > 1:
+        evs_p.pop()
+        msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+
+    # Prune Reminders
+    while len(msg) > MAX_MESSAGE_CHARS and rems_p:
+        rems_p.pop()
+        msg = assemble(evs_p, urg_p, higs_p, rems_p, allergy, wp_p, wk_p, focus)
+
+    # Last resort: absolute truncation
+    if len(msg) > MAX_MESSAGE_CHARS:
+        msg = msg[: MAX_MESSAGE_CHARS - 3] + "..."
+
+    return msg
 
 
 # ── iMessage ──────────────────────────────────────────────────────────────────
+
 
 def send_imessage(message: str, target: str) -> bool:
     return _send_imessage(message, target, max_message_chars=MAX_MESSAGE_CHARS, log=log)
@@ -291,16 +331,18 @@ def notify_failure(target: str, error: str) -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main():
     log_file = Path.home() / ".morning_brief.log"
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if sys.stdout.isatty():
+        handlers.append(logging.FileHandler(log_file))
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=handlers,
     )
 
     log.info("Starting morning brief")
@@ -318,7 +360,11 @@ def main():
         reminders_lines.append(f"[Due today] {r}")
     reminders_ctx = "\n".join(reminders_lines) if reminders_lines else ""
     if reminders_ctx:
-        log.info("Reminders: %d overdue, %d due today", len(reminders_data["overdue"]), len(reminders_data["due"]))
+        log.info(
+            "Reminders: %d overdue, %d due today",
+            len(reminders_data["overdue"]),
+            len(reminders_data["due"]),
+        )
 
     try:
         raw = get_briefing(weather, reminders_ctx)

@@ -3,14 +3,17 @@
 evening_brief.py — Evening look-ahead briefing sent via iMessage
 """
 
-import json
 import logging
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from shared.briefing_common import call_briefing_model, fetch_weather, parse_json_response
+from shared.briefing_common import (
+    call_briefing_model,
+    fetch_weather,
+    parse_json_response,
+)
 from shared.briefing_common import send_imessage as _send_imessage
 from shared.google_api import list_calendar_events, list_unread_messages
 from shared.reminders import get_reminders
@@ -25,6 +28,7 @@ MAX_MESSAGE_CHARS = 1200
 MODEL = "claude-haiku-4-5-20251001"
 
 # ── Weather ───────────────────────────────────────────────────────────────────
+
 
 def get_weather() -> str:
     """Fetch one-line weather summary from wttr.in. Returns empty string on failure."""
@@ -84,6 +88,7 @@ Return only valid JSON, no other text.{reminders_block}
 
 # ── Claude call ───────────────────────────────────────────────────────────────
 
+
 def get_briefing(weather: str, reminders_ctx: str = "") -> str:
     """Fetch calendar/email directly via Google APIs, then call Claude without tools."""
     tomorrow = datetime.now() + timedelta(days=1)
@@ -107,6 +112,7 @@ def get_briefing(weather: str, reminders_ctx: str = "") -> str:
 
 # ── Format briefing ───────────────────────────────────────────────────────────
 
+
 def _try_append(lines: list[str], candidate: list[str]) -> bool:
     """Append candidate lines if they fit within MAX_MESSAGE_CHARS. Returns True if added."""
     if len("\n".join(lines + candidate)) <= MAX_MESSAGE_CHARS:
@@ -119,63 +125,91 @@ def format_briefing(raw: str, weather: str) -> str:
     """Parse JSON briefing and format as plain text with emoji sections. Falls back to raw text."""
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%a %b %-d")
-    header = f"🌙 Tomorrow, {date_str} | {weather}" if weather else f"🌙 Tomorrow, {date_str}"
+    header = (
+        f"🌙 Tomorrow, {date_str} | {weather}"
+        if weather
+        else f"🌙 Tomorrow, {date_str}"
+    )
 
     data, fallback = parse_json_response(raw, header=header, log=log)
     if fallback:
         return fallback
 
-    lines: list[str] = [header]
-
-    # Tomorrow's schedule
+    # Extract all components
     events = data.get("tomorrow_events", [])
-    sched = ["", "📅 TOMORROW"]
-    sched += [f"• {e}" for e in events] if events else ["Nothing scheduled — enjoy the open day!"]
-    if not _try_append(lines, sched):
-        _try_append(lines, ["", "📅 TOMORROW"])
-        for e in events:
-            if not _try_append(lines, [f"• {e}"]):
-                break
-
-    # Pending replies — only shown if present
     pending = data.get("pending_replies", [])
-    if pending:
-        pending_sec = ["", "📬 PENDING REPLIES"] + [f"• {e}" for e in pending]
-        if not _try_append(lines, pending_sec):
-            if _try_append(lines, ["", "📬 PENDING REPLIES"]):
-                for e in pending:
-                    if not _try_append(lines, [f"• {e}"]):
-                        break
-
-    # Email highlights
     emails = data.get("email_highlights", [])
-    email_sec = ["", "📧 HIGHLIGHTS"]
-    email_sec += [f"• {e}" for e in emails] if emails else ["Inbox is quiet — nothing notable."]
-    if not _try_append(lines, email_sec):
-        if _try_append(lines, ["", "📧 HIGHLIGHTS"]):
-            for e in emails:
-                if not _try_append(lines, [f"• {e}"]):
-                    break
-
-    # Reminders
     reminders = data.get("reminders", [])
-    if reminders:
-        rem_sec = ["", "✅ REMINDERS"] + [f"• {r}" for r in reminders]
-        if not _try_append(lines, rem_sec):
-            if _try_append(lines, ["", "✅ REMINDERS"]):
-                for r in reminders:
-                    if not _try_append(lines, [f"• {r}"]):
-                        break
-
-    # Tonight's prep — lowest priority
     prep = data.get("prep", "")
-    if prep:
-        _try_append(lines, ["", f"Tonight: {prep}"])
 
-    return "\n".join(lines)
+    # Helper function to assemble components into a single message
+    def assemble(evs, pend, higs, rems, prp) -> str:
+        lines = [header]
+
+        # Tomorrow's schedule
+        sched = ["", "📅 TOMORROW"]
+        sched += (
+            [f"• {e}" for e in evs]
+            if evs
+            else ["Nothing scheduled — enjoy the open day!"]
+        )
+        lines.extend(sched)
+
+        # Pending replies
+        if pend:
+            lines.extend(["", "📬 PENDING REPLIES"] + [f"• {e}" for e in pend])
+
+        # Highlights
+        h_sec = ["", "📧 HIGHLIGHTS"]
+        h_sec += (
+            [f"• {e}" for e in higs] if higs else ["Inbox is quiet — nothing notable."]
+        )
+        lines.extend(h_sec)
+
+        # Reminders
+        if rems:
+            lines.extend(["", "✅ REMINDERS"] + [f"• {r}" for r in rems])
+
+        # Prep
+        if prp:
+            lines.extend(["", f"Tonight: {prp}"])
+
+        return "\n".join(lines)
+
+    # Clone components for pruning
+    evs_p = list(events)
+    pend_p = list(pending)
+    higs_p = list(emails)
+    rems_p = list(reminders)
+
+    # Initial assembly
+    msg = assemble(evs_p, pend_p, higs_p, rems_p, prep)
+
+    # Pruning Loop: if message exceeds MAX_MESSAGE_CHARS, we prune from least important to most important.
+    # Prune Highlights
+    while len(msg) > MAX_MESSAGE_CHARS and higs_p:
+        higs_p.pop()
+        msg = assemble(evs_p, pend_p, higs_p, rems_p, prep)
+
+    # Prune Schedule (events) - down to 1 event if it was not empty
+    while len(msg) > MAX_MESSAGE_CHARS and len(evs_p) > 1:
+        evs_p.pop()
+        msg = assemble(evs_p, pend_p, higs_p, rems_p, prep)
+
+    # Prune Reminders
+    while len(msg) > MAX_MESSAGE_CHARS and rems_p:
+        rems_p.pop()
+        msg = assemble(evs_p, pend_p, higs_p, rems_p, prep)
+
+    # Last resort: absolute truncation
+    if len(msg) > MAX_MESSAGE_CHARS:
+        msg = msg[: MAX_MESSAGE_CHARS - 3] + "..."
+
+    return msg
 
 
 # ── iMessage ──────────────────────────────────────────────────────────────────
+
 
 def send_imessage(message: str, target: str) -> bool:
     return _send_imessage(message, target, max_message_chars=MAX_MESSAGE_CHARS, log=log)
@@ -191,16 +225,18 @@ def notify_failure(target: str, error: str) -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main():
     log_file = Path.home() / ".evening_brief.log"
+    handlers = [logging.StreamHandler(sys.stdout)]
+    if sys.stdout.isatty():
+        handlers.append(logging.FileHandler(log_file))
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=handlers,
     )
 
     log.info("Starting evening brief")
@@ -219,7 +255,11 @@ def main():
         reminders_lines.append(f"[Due tomorrow] {r}")
     reminders_ctx = "\n".join(reminders_lines) if reminders_lines else ""
     if reminders_ctx:
-        log.info("Reminders: %d overdue, %d due tomorrow", len(reminders_data["overdue"]), len(reminders_data["due"]))
+        log.info(
+            "Reminders: %d overdue, %d due tomorrow",
+            len(reminders_data["overdue"]),
+            len(reminders_data["due"]),
+        )
 
     try:
         raw = get_briefing(weather, reminders_ctx)

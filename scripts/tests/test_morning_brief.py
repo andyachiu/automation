@@ -16,7 +16,7 @@ import logging
 import sys
 import urllib.error
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -26,10 +26,10 @@ logging.getLogger("morning_brief").propagate = False
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import morning_brief
-
+import morning_brief  # noqa: E402
 
 # ── get_weather ───────────────────────────────────────────────────────────────
+
 
 class TestGetWeather:
     def _mock_urlopen(self, body: bytes):
@@ -40,15 +40,22 @@ class TestGetWeather:
         return resp
 
     def test_returns_weather_on_success(self):
-        with patch("urllib.request.urlopen", return_value=self._mock_urlopen(b"San Francisco: Sunny +62F\n")):
+        with patch(
+            "urllib.request.urlopen",
+            return_value=self._mock_urlopen(b"San Francisco: Sunny +62F\n"),
+        ):
             assert morning_brief.get_weather() == "San Francisco: Sunny +62F"
 
     def test_strips_trailing_whitespace(self):
-        with patch("urllib.request.urlopen", return_value=self._mock_urlopen(b"City: Rain\n\n")):
+        with patch(
+            "urllib.request.urlopen", return_value=self._mock_urlopen(b"City: Rain\n\n")
+        ):
             assert morning_brief.get_weather() == "City: Rain"
 
     def test_returns_empty_on_url_error(self):
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):
+        with patch(
+            "urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")
+        ):
             assert morning_brief.get_weather() == ""
 
     def test_returns_empty_on_timeout(self):
@@ -62,11 +69,12 @@ class TestGetWeather:
 
 # ── is_monday ─────────────────────────────────────────────────────────────────
 
+
 class TestIsMonday:
     def _patch_weekday(self, weekday: int):
         mock_now = MagicMock()
         mock_now.weekday.return_value = weekday
-        return patch("morning_brief.datetime") , mock_now
+        return patch("morning_brief.datetime"), mock_now
 
     def test_true_on_monday(self):
         mock_now = MagicMock()
@@ -86,60 +94,96 @@ class TestIsMonday:
 
 # ── build_user_prompt ─────────────────────────────────────────────────────────
 
+
 class TestBuildUserPrompt:
     def test_includes_weather_when_provided(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("City: 72F sunny")
         assert "City: 72F sunny" in prompt
 
     def test_no_weather_line_when_empty(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "Current weather:" not in prompt
 
     def test_monday_includes_week_preview_json_key(self):
-        with patch("morning_brief.is_monday", return_value=True), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=True),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "week_preview" in prompt
 
     def test_non_monday_no_week_preview_json_key(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "week_preview" not in prompt
 
     def test_monday_includes_week_ahead_instruction(self):
-        with patch("morning_brief.is_monday", return_value=True), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=True),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "Monday" in prompt or "week-ahead" in prompt or "Mon-Fri" in prompt
 
     def test_email_criteria_direct_recipient(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "directly addressed to me" in prompt
 
     def test_weekday_email_criteria_timeframe(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "24 hours" in prompt
 
     def test_weekend_prompt_drops_24h_window(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=True):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=True),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "24 hours" not in prompt
         assert "received today" in prompt
 
     def test_email_criteria_excludes_newsletters(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
-        assert "newsletter" in prompt or "mailing list" in prompt or "automated" in prompt
+        assert (
+            "newsletter" in prompt or "mailing list" in prompt or "automated" in prompt
+        )
 
     def test_requests_json_output(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         assert "JSON" in prompt
 
     def test_json_keys_documented(self):
-        with patch("morning_brief.is_monday", return_value=False), patch("morning_brief.is_weekend", return_value=False):
+        with (
+            patch("morning_brief.is_monday", return_value=False),
+            patch("morning_brief.is_weekend", return_value=False),
+        ):
             prompt = morning_brief.build_user_prompt("")
         for key in ("summary", "events", "urgent_emails", "email_highlights", "focus"):
             assert key in prompt
@@ -224,8 +268,44 @@ class TestFormatBriefing:
         result = morning_brief.format_briefing('{"summary": "quiet day"}', "")
         assert "SCHEDULE" in result
 
+    def test_prioritized_pruning_under_limit(self):
+        large_data = {
+            "summary": "overview",
+            "events": ["9 AM: Event A", "10 AM: Event B", "11 AM: Event C"],
+            "urgent_emails": ["Urgent Msg"],
+            "email_highlights": ["Highlight 1", "Highlight 2"],
+            "reminders": ["Reminder A", "Reminder B"],
+            "week_preview": ["Mon: Week Preview A", "Tue: Week Preview B"],
+            "focus": "Ultimate Priority Focus Line",
+        }
+
+        result_full = morning_brief.format_briefing(json.dumps(large_data), "SF: 60F")
+        assert "HIGHLIGHTS" in result_full
+        assert "WEEK AHEAD" in result_full
+        assert "Event A" in result_full
+        assert "Event B" in result_full
+        assert "Event C" in result_full
+        assert "Reminder A" in result_full
+        assert "Reminder B" in result_full
+        assert "FOCUS" in result_full
+        assert "Urgent Msg" in result_full
+
+        with patch("morning_brief.MAX_MESSAGE_CHARS", 250):
+            result_pruned = morning_brief.format_briefing(
+                json.dumps(large_data), "SF: 60F"
+            )
+            assert (
+                "HIGHLIGHTS" not in result_pruned or "Highlight 1" not in result_pruned
+            )
+            assert "WEEK AHEAD" not in result_pruned
+            assert "Event A" in result_pruned
+            assert "FOCUS" in result_pruned
+            assert "URGENT" in result_pruned
+            assert len(result_pruned) <= 250
+
 
 # ── send_imessage ─────────────────────────────────────────────────────────────
+
 
 class TestSendImessage:
     @pytest.fixture(autouse=True)
@@ -240,7 +320,9 @@ class TestSendImessage:
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
 
     def test_returns_false_on_applescript_error(self):
-        with patch("subprocess.run", return_value=MagicMock(returncode=1, stderr="error")):
+        with patch(
+            "subprocess.run", return_value=MagicMock(returncode=1, stderr="error")
+        ):
             assert morning_brief.send_imessage("Hello", "+15551234567") is False
 
     def test_prints_to_stdout_when_no_target(self, capsys):
@@ -258,11 +340,16 @@ class TestSendImessage:
         # Pile-up at pre-flight; reap succeeds (post-reap probe returns 1 PID).
         probe_returns = iter([[100, 200, 300], [300]])
         mock_log = MagicMock()
-        with patch("shared.briefing_common._blastdoor_pids", side_effect=lambda: next(probe_returns)), \
-             patch("shared.briefing_common.os.kill") as mock_kill, \
-             patch("shared.briefing_common.time.sleep"), \
-             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run, \
-             patch("morning_brief.log", mock_log):
+        with (
+            patch(
+                "shared.briefing_common._blastdoor_pids",
+                side_effect=lambda: next(probe_returns),
+            ),
+            patch("shared.briefing_common.os.kill") as mock_kill,
+            patch("shared.briefing_common.time.sleep"),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run,
+            patch("morning_brief.log", mock_log),
+        ):
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
         # Kept newest (300), killed older two (100, 200).
         killed_pids = sorted(call.args[0] for call in mock_kill.call_args_list)
@@ -273,26 +360,35 @@ class TestSendImessage:
         # Reap fires but post-reap probe still shows pile-up — fail loud.
         probe_returns = iter([[100, 200, 300], [200, 300]])
         mock_log = MagicMock()
-        with patch("shared.briefing_common._blastdoor_pids", side_effect=lambda: next(probe_returns)), \
-             patch("shared.briefing_common.os.kill"), \
-             patch("shared.briefing_common.time.sleep"), \
-             patch("subprocess.run") as mock_run, \
-             patch("morning_brief.log", mock_log):
+        with (
+            patch(
+                "shared.briefing_common._blastdoor_pids",
+                side_effect=lambda: next(probe_returns),
+            ),
+            patch("shared.briefing_common.os.kill"),
+            patch("shared.briefing_common.time.sleep"),
+            patch("subprocess.run") as mock_run,
+            patch("morning_brief.log", mock_log),
+        ):
             assert morning_brief.send_imessage("Hello", "+15551234567") is False
         mock_run.assert_not_called()  # osascript must NOT be invoked
         error_calls = mock_log.error.call_args_list
         assert error_calls and "BlastDoor still wedged" in error_calls[0][0][0]
 
     def test_send_proceeds_when_blastdoor_count_is_one(self):
-        with patch("shared.briefing_common._blastdoor_pids", return_value=[42]), \
-             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+        with (
+            patch("shared.briefing_common._blastdoor_pids", return_value=[42]),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run,
+        ):
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
         mock_run.assert_called_once()
 
     def test_send_proceeds_when_pgrep_probe_fails(self):
         # If the pgrep probe itself errors (returns None), don't block sends.
-        with patch("shared.briefing_common._blastdoor_pids", return_value=None), \
-             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+        with (
+            patch("shared.briefing_common._blastdoor_pids", return_value=None),
+            patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run,
+        ):
             assert morning_brief.send_imessage("Hello", "+15551234567") is True
         mock_run.assert_called_once()
 
@@ -343,6 +439,7 @@ class TestSendImessage:
 
 
 # ── notify_failure ────────────────────────────────────────────────────────────
+
 
 class TestNotifyFailure:
     def test_sends_message_containing_failed(self):

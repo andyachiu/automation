@@ -12,7 +12,10 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-STORES_DIR = Path.home() / "Library/Group Containers/group.com.apple.reminders/Container_v1/Stores"
+STORES_DIR = (
+    Path.home()
+    / "Library/Group Containers/group.com.apple.reminders/Container_v1/Stores"
+)
 CORE_DATA_EPOCH = 978307200  # 2001-01-01 in Unix time
 
 
@@ -52,7 +55,8 @@ def _find_db() -> Path | None:
             "Fix: System Settings → Privacy & Security → Full Disk Access → remove and re-add %s "
             "(whichever was actually used to launch this script). "
             "TCC keys grants by binary signature, so any upgrade silently invalidates the existing entry.",
-            STORES_DIR, candidates,
+            STORES_DIR,
+            candidates,
         )
         return None
 
@@ -73,7 +77,9 @@ def _find_db() -> Path | None:
     return best
 
 
-def get_reminders(target_date: datetime, include_overdue: bool = True) -> dict[str, list[str]]:
+def get_reminders(
+    target_date: datetime, include_overdue: bool = True
+) -> dict[str, list[str]]:
     """Fetch reminders relevant to target_date.
 
     Returns dict with keys:
@@ -118,7 +124,11 @@ def get_reminders(target_date: datetime, include_overdue: bool = True) -> dict[s
     for title, due_ts, list_name in rows:
         if not title:
             continue
-        label = title if (not list_name or list_name == "Reminders") else f"{title} ({list_name})"
+        label = (
+            title
+            if (not list_name or list_name == "Reminders")
+            else f"{title} ({list_name})"
+        )
         if due_ts < today_ts:
             overdue.append(label)
         elif target_start_ts <= due_ts < target_end_ts:

@@ -23,17 +23,26 @@ except ModuleNotFoundError:
     # Supports `uv run shared/refresh_tokens.py` from the scripts/ dir.
     from system import current_user
 
-KC_CLIENT  = "morning-brief-google-client"
+KC_CLIENT = "morning-brief-google-client"
 KC_REFRESH = "morning-brief-google-refresh-token"
-KC_ACCESS  = "morning-brief-google-token"
+KC_ACCESS = "morning-brief-google-token"
 
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
 
 def keychain_get(service: str) -> str | None:
     result = subprocess.run(
-        ["security", "find-generic-password", "-a", current_user(), "-s", service, "-w"],
-        capture_output=True, text=True,
+        [
+            "security",
+            "find-generic-password",
+            "-a",
+            current_user(),
+            "-s",
+            service,
+            "-w",
+        ],
+        capture_output=True,
+        text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else None
 
@@ -41,12 +50,31 @@ def keychain_get(service: str) -> str | None:
 def keychain_set(service: str, value: str) -> None:
     user = current_user()
     result = subprocess.run(
-        ["security", "add-generic-password", "-a", user, "-s", service, "-w", value, "-U"],
+        [
+            "security",
+            "add-generic-password",
+            "-a",
+            user,
+            "-s",
+            service,
+            "-w",
+            value,
+            "-U",
+        ],
         capture_output=True,
     )
     if result.returncode != 0:
         subprocess.run(
-            ["security", "add-generic-password", "-a", user, "-s", service, "-w", value],
+            [
+                "security",
+                "add-generic-password",
+                "-a",
+                user,
+                "-s",
+                service,
+                "-w",
+                value,
+            ],
             check=True,
         )
 
@@ -54,21 +82,29 @@ def keychain_set(service: str, value: str) -> None:
 def main() -> int:
     refresh = keychain_get(KC_REFRESH)
     if not refresh:
-        print(f"  No refresh token in Keychain ({KC_REFRESH}). Re-run oauth_setup.py.", file=sys.stderr)
+        print(
+            f"  No refresh token in Keychain ({KC_REFRESH}). Re-run oauth_setup.py.",
+            file=sys.stderr,
+        )
         return 1
 
     client_json = keychain_get(KC_CLIENT)
     if not client_json:
-        print(f"  No client credentials in Keychain ({KC_CLIENT}). Re-run oauth_setup.py.", file=sys.stderr)
+        print(
+            f"  No client credentials in Keychain ({KC_CLIENT}). Re-run oauth_setup.py.",
+            file=sys.stderr,
+        )
         return 1
     client = json.loads(client_json)
 
-    payload = urllib.parse.urlencode({
-        "grant_type":    "refresh_token",
-        "refresh_token": refresh,
-        "client_id":     client["client_id"],
-        "client_secret": client["client_secret"],
-    }).encode()
+    payload = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh,
+            "client_id": client["client_id"],
+            "client_secret": client["client_secret"],
+        }
+    ).encode()
 
     req = urllib.request.Request(
         TOKEN_ENDPOINT,

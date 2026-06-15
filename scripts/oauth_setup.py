@@ -37,12 +37,12 @@ import webbrowser
 from shared.system import current_user
 
 # ── Keychain service names ────────────────────────────────────────────────────
-KC_CLIENT  = "morning-brief-google-client"          # JSON {client_id, client_secret}
+KC_CLIENT = "morning-brief-google-client"  # JSON {client_id, client_secret}
 KC_REFRESH = "morning-brief-google-refresh-token"
-KC_ACCESS  = "morning-brief-google-token"
+KC_ACCESS = "morning-brief-google-token"
 
 # ── Google OAuth endpoints ────────────────────────────────────────────────────
-AUTH_ENDPOINT  = "https://accounts.google.com/o/oauth2/v2/auth"
+AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
 SCOPES = [
@@ -51,13 +51,22 @@ SCOPES = [
 ]
 
 REDIRECT_PORT = 18329
-REDIRECT_URI  = f"http://localhost:{REDIRECT_PORT}/callback"
+REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback"
 
 
 def keychain_get(service: str) -> str | None:
     result = subprocess.run(
-        ["security", "find-generic-password", "-a", current_user(), "-s", service, "-w"],
-        capture_output=True, text=True,
+        [
+            "security",
+            "find-generic-password",
+            "-a",
+            current_user(),
+            "-s",
+            service,
+            "-w",
+        ],
+        capture_output=True,
+        text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else None
 
@@ -65,22 +74,43 @@ def keychain_get(service: str) -> str | None:
 def keychain_set(service: str, value: str) -> None:
     user = current_user()
     result = subprocess.run(
-        ["security", "add-generic-password", "-a", user, "-s", service, "-w", value, "-U"],
+        [
+            "security",
+            "add-generic-password",
+            "-a",
+            user,
+            "-s",
+            service,
+            "-w",
+            value,
+            "-U",
+        ],
         capture_output=True,
     )
     if result.returncode != 0:
         subprocess.run(
-            ["security", "add-generic-password", "-a", user, "-s", service, "-w", value],
+            [
+                "security",
+                "add-generic-password",
+                "-a",
+                user,
+                "-s",
+                service,
+                "-w",
+                value,
+            ],
             check=True,
         )
 
 
 def load_client() -> tuple[str, str]:
     """Load OAuth client from env vars (first run) or Keychain (subsequent runs)."""
-    env_id     = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+    env_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
     env_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
     if env_id and env_secret:
-        keychain_set(KC_CLIENT, json.dumps({"client_id": env_id, "client_secret": env_secret}))
+        keychain_set(
+            KC_CLIENT, json.dumps({"client_id": env_id, "client_secret": env_secret})
+        )
         print("Stored Google OAuth client in Keychain.")
         return env_id, env_secret
 
@@ -140,15 +170,19 @@ def capture_auth_code(state: str) -> str:
     return captured["code"]
 
 
-def exchange_code(client_id: str, client_secret: str, code: str, code_verifier: str) -> dict:
-    payload = urllib.parse.urlencode({
-        "grant_type":    "authorization_code",
-        "code":          code,
-        "redirect_uri":  REDIRECT_URI,
-        "client_id":     client_id,
-        "client_secret": client_secret,
-        "code_verifier": code_verifier,
-    }).encode()
+def exchange_code(
+    client_id: str, client_secret: str, code: str, code_verifier: str
+) -> dict:
+    payload = urllib.parse.urlencode(
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code_verifier": code_verifier,
+        }
+    ).encode()
 
     req = urllib.request.Request(
         TOKEN_ENDPOINT,
@@ -172,17 +206,23 @@ def main() -> int:
     code_challenge = b64url_no_pad(hashlib.sha256(code_verifier.encode()).digest())
     state = secrets.token_urlsafe(32)
 
-    auth_url = AUTH_ENDPOINT + "?" + urllib.parse.urlencode({
-        "client_id":             client_id,
-        "redirect_uri":          REDIRECT_URI,
-        "response_type":         "code",
-        "scope":                 " ".join(SCOPES),
-        "access_type":           "offline",   # required to get a refresh_token
-        "prompt":                "consent",   # forces refresh_token issuance on re-auth
-        "state":                 state,
-        "code_challenge":        code_challenge,
-        "code_challenge_method": "S256",
-    })
+    auth_url = (
+        AUTH_ENDPOINT
+        + "?"
+        + urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": REDIRECT_URI,
+                "response_type": "code",
+                "scope": " ".join(SCOPES),
+                "access_type": "offline",  # required to get a refresh_token
+                "prompt": "consent",  # forces refresh_token issuance on re-auth
+                "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+    )
 
     print("\nOpening browser for Google authorization...")
     print(f"If it doesn't open automatically: {auth_url}\n")
@@ -193,7 +233,7 @@ def main() -> int:
 
     tokens = exchange_code(client_id, client_secret, code, code_verifier)
 
-    access  = tokens.get("access_token")
+    access = tokens.get("access_token")
     refresh = tokens.get("refresh_token")
 
     if not access:
@@ -208,7 +248,7 @@ def main() -> int:
         )
         return 1
 
-    keychain_set(KC_ACCESS,  access)
+    keychain_set(KC_ACCESS, access)
     keychain_set(KC_REFRESH, refresh)
 
     print("\nDone. Stored:")

@@ -27,15 +27,33 @@ OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 AUTOMATION_GIT_BRANCH="${AUTOMATION_GIT_BRANCH:-main}"
 KEYCHAIN_USER="$(automation_current_user)"
 
-log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
-log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_FILE"; }
+if [[ -t 1 ]]; then
+    log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+    log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }
+else
+    log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+    log_err() {
+        local msg="[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*"
+        echo "$msg" >> "$LOG_FILE"
+        echo "$msg" >&2
+    }
+fi
 
 on_failure() {
     local exit_code=$?
     log_err "Deploy failed with exit code $exit_code"
     # Best-effort iMessage notification — skip silently if Keychain unavailable
     IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
-    local msg="Morning brief deploy failed (exit $exit_code). Check ~/.morning_brief_deploy.log"
+    local last_err=""
+    if [[ -f "$LOG_FILE" ]]; then
+        last_err=$(grep "ERROR:" "$LOG_FILE" 2>/dev/null | tail -n 1 | sed 's/.*ERROR: //' || true)
+    fi
+    local msg
+    if [[ -n "$last_err" ]]; then
+        msg="Morning brief deploy failed: $last_err"
+    else
+        msg="Morning brief deploy failed (exit $exit_code). Check ~/.morning_brief_deploy.log"
+    fi
     local escaped="${msg//\\/\\\\}"
     escaped="${escaped//\"/\\\"}"
     "$OSASCRIPT_BIN" -e "

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Quick check that your Anthropic API key is valid and has credits."""
 
-import anthropic
 import os
 import sys
+
+import anthropic
 
 api_key = os.environ.get("ANTHROPIC_API_KEY")
 if not api_key:

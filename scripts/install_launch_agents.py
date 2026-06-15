@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -39,12 +40,17 @@ def build_launchd_path() -> str:
 
 
 def render_template(template_path: Path) -> str:
-    return template_path.read_text().replace("{{HOME}}", str(Path.home())).replace(
-        "{{SCRIPTS_DIR}}",
-        str(SCRIPTS_DIR),
-    ).replace(
-        "{{PATH}}",
-        build_launchd_path(),
+    return (
+        template_path.read_text()
+        .replace("{{HOME}}", str(Path.home()))
+        .replace(
+            "{{SCRIPTS_DIR}}",
+            str(SCRIPTS_DIR),
+        )
+        .replace(
+            "{{PATH}}",
+            build_launchd_path(),
+        )
     )
 
 
@@ -71,6 +77,11 @@ def main() -> int:
         default=DEFAULT_DEST,
         help="Directory to write rendered plists into (default: ~/Library/LaunchAgents).",
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Automatically unload and reload the launchd agents.",
+    )
     args = parser.parse_args()
 
     written = install_templates(args.dest.expanduser())
@@ -78,9 +89,21 @@ def main() -> int:
     for path in written:
         print(f"  - {path}")
 
-    print("\nLoad them with:")
-    for path in written:
-        print(f"  launchctl load {path}")
+    if args.reload:
+        print("\nReloading launchd agents...")
+        for path in written:
+            subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
+            res = subprocess.run(
+                ["launchctl", "load", str(path)], capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                print(f"  Reloaded {path.name}")
+            else:
+                print(f"  Failed to load {path.name}: {res.stderr.strip()}")
+    else:
+        print("\nLoad them with:")
+        for path in written:
+            print(f"  launchctl load {path}")
 
     return 0
 

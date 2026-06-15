@@ -23,13 +23,15 @@ def list_calendar_events(
     time_max: str,
     calendar_id: str = "primary",
 ) -> list[dict]:
-    params = urllib.parse.urlencode({
-        "timeMin": time_min,
-        "timeMax": time_max,
-        "singleEvents": "true",
-        "orderBy": "startTime",
-        "maxResults": "250",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "timeMin": time_min,
+            "timeMax": time_max,
+            "singleEvents": "true",
+            "orderBy": "startTime",
+            "maxResults": "250",
+        }
+    )
     url = (
         f"https://www.googleapis.com/calendar/v3/calendars/"
         f"{urllib.parse.quote(calendar_id)}/events?{params}"
@@ -40,12 +42,14 @@ def list_calendar_events(
     for ev in data.get("items", []):
         start = ev.get("start", {})
         end = ev.get("end", {})
-        out.append({
-            "start": start.get("dateTime") or start.get("date", ""),
-            "end": end.get("dateTime") or end.get("date", ""),
-            "summary": ev.get("summary", "(no title)"),
-            "location": ev.get("location"),
-        })
+        out.append(
+            {
+                "start": start.get("dateTime") or start.get("date", ""),
+                "end": end.get("dateTime") or end.get("date", ""),
+                "summary": ev.get("summary", "(no title)"),
+                "location": ev.get("location"),
+            }
+        )
     return out
 
 
@@ -55,7 +59,10 @@ def _fetch_message_metadata(token: str, msg_id: str) -> dict:
         "?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"
     )
     data = _get_json(url, token)
-    headers = {h["name"].lower(): h["value"] for h in data.get("payload", {}).get("headers", [])}
+    headers = {
+        h["name"].lower(): h["value"]
+        for h in data.get("payload", {}).get("headers", [])
+    }
     return {
         "from": headers.get("from", ""),
         "subject": headers.get("subject", ""),
@@ -65,7 +72,9 @@ def _fetch_message_metadata(token: str, msg_id: str) -> dict:
 
 
 def list_unread_messages(token: str, max_results: int = 50) -> list[dict]:
-    params = urllib.parse.urlencode({"q": "is:unread in:inbox", "maxResults": str(max_results)})
+    params = urllib.parse.urlencode(
+        {"q": "is:unread in:inbox", "maxResults": str(max_results)}
+    )
     url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages?{params}"
     data = _get_json(url, token)
     ids = [m["id"] for m in data.get("messages", [])]

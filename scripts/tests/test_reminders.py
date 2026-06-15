@@ -12,16 +12,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.reminders import CORE_DATA_EPOCH, _find_db, get_reminders
-import morning_brief
 import evening_brief
-
+import morning_brief
+from shared.reminders import CORE_DATA_EPOCH, _find_db, get_reminders
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_ts(dt: datetime) -> float:
     return dt.timestamp() - CORE_DATA_EPOCH
@@ -54,6 +52,7 @@ def _mock_db(rows: list[tuple], tmp_path: Path) -> Path:
 
 # ── _find_db ─────────────────────────────────────────────────────────────────
 
+
 class TestFindDb:
     def test_returns_none_when_dir_missing(self):
         with patch("shared.reminders.STORES_DIR", Path("/nonexistent")):
@@ -73,7 +72,9 @@ class TestFindDb:
         # DB A: 1 incomplete reminder
         db_a = tmp_path / "A.sqlite"
         conn = sqlite3.connect(str(db_a))
-        conn.execute("CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)")
+        conn.execute(
+            "CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)"
+        )
         conn.execute("INSERT INTO ZREMCDREMINDER VALUES (0, 0)")
         conn.commit()
         conn.close()
@@ -81,7 +82,9 @@ class TestFindDb:
         # DB B: 3 incomplete reminders
         db_b = tmp_path / "B.sqlite"
         conn = sqlite3.connect(str(db_b))
-        conn.execute("CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)")
+        conn.execute(
+            "CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)"
+        )
         for _ in range(3):
             conn.execute("INSERT INTO ZREMCDREMINDER VALUES (0, 0)")
         conn.commit()
@@ -97,7 +100,9 @@ class TestFindDb:
         (tmp_path / "Data.sqlite-shm").touch()
         db = tmp_path / "Data.sqlite"
         conn = sqlite3.connect(str(db))
-        conn.execute("CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)")
+        conn.execute(
+            "CREATE TABLE ZREMCDREMINDER (ZCOMPLETED INTEGER, ZMARKEDFORDELETION INTEGER)"
+        )
         conn.execute("INSERT INTO ZREMCDREMINDER VALUES (0, 0)")
         conn.commit()
         conn.close()
@@ -108,6 +113,7 @@ class TestFindDb:
 
 
 # ── get_reminders ────────────────────────────────────────────────────────────
+
 
 class TestGetReminders:
     def test_returns_empty_when_no_db(self):
@@ -235,6 +241,7 @@ class TestGetReminders:
 
 # ── Morning brief integration ───────────────────────────────────────────────
 
+
 class TestMorningBriefReminders:
     def test_prompt_includes_reminders_context(self):
         ctx = "[OVERDUE] Pay bills\n[Due today] Call dentist"
@@ -289,6 +296,7 @@ class TestMorningBriefReminders:
 
 # ── Evening brief integration ────────────────────────────────────────────────
 
+
 class TestEveningBriefReminders:
     def test_prompt_includes_reminders_context(self):
         ctx = "[OVERDUE] Pay bills\n[Due tomorrow] Prep slides"
@@ -342,3 +350,35 @@ class TestEveningBriefReminders:
         rem_pos = result.index("REMINDERS")
         prep_pos = result.index("Tonight:")
         assert rem_pos < prep_pos
+
+    def test_prioritized_pruning_under_limit(self):
+        large_data = {
+            "summary": "overview",
+            "tomorrow_events": ["9 AM: Event A", "10 AM: Event B", "11 AM: Event C"],
+            "pending_replies": ["Reply ASAP"],
+            "email_highlights": ["Highlight 1", "Highlight 2"],
+            "reminders": ["Reminder A", "Reminder B"],
+            "prep": "Ultimate Prep Step",
+        }
+
+        result_full = evening_brief.format_briefing(json.dumps(large_data), "SF: 60F")
+        assert "HIGHLIGHTS" in result_full
+        assert "Event A" in result_full
+        assert "Event B" in result_full
+        assert "Event C" in result_full
+        assert "Reminder A" in result_full
+        assert "Reminder B" in result_full
+        assert "Tonight:" in result_full
+        assert "PENDING REPLIES" in result_full
+
+        with patch("evening_brief.MAX_MESSAGE_CHARS", 200):
+            result_pruned = evening_brief.format_briefing(
+                json.dumps(large_data), "SF: 60F"
+            )
+            assert (
+                "HIGHLIGHTS" not in result_pruned or "Highlight 1" not in result_pruned
+            )
+            assert "Event A" in result_pruned
+            assert "Tonight:" in result_pruned
+            assert "PENDING REPLIES" in result_pruned
+            assert len(result_pruned) <= 200

@@ -17,8 +17,17 @@ SECURITY_BIN="${SECURITY_BIN:-security}"
 OSASCRIPT_BIN="${OSASCRIPT_BIN:-osascript}"
 KEYCHAIN_USER="$(automation_current_user)"
 
-log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
-log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }
+if [[ -t 1 ]]; then
+    log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+    log_err() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }
+else
+    log()     { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+    log_err() {
+        local msg="[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*"
+        echo "$msg" >> "$LOG_FILE"
+        echo "$msg" >&2
+    }
+fi
 
 # ── Failure trap ───────────────────────────────────────────────────────────────
 IMESSAGE_TARGET=""
@@ -27,7 +36,16 @@ on_failure() {
     local exit_code=$?
     log_err "Script failed with exit code $exit_code"
     if [[ -n "$IMESSAGE_TARGET" ]]; then
-        local msg="Evening brief failed (exit $exit_code). Check ~/.evening_brief.log"
+        local last_err=""
+        if [[ -f "$LOG_FILE" ]]; then
+            last_err=$(grep "ERROR:" "$LOG_FILE" 2>/dev/null | tail -n 1 | sed 's/.*ERROR: //' || true)
+        fi
+        local msg
+        if [[ -n "$last_err" ]]; then
+            msg="Evening brief failed: $last_err"
+        else
+            msg="Evening brief failed (exit $exit_code). Check ~/.evening_brief.log"
+        fi
         local escaped="${msg//\\/\\\\}"
         escaped="${escaped//\"/\\\"}"
         "$OSASCRIPT_BIN" -e "

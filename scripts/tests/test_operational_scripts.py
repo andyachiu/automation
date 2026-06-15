@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-import check_setup
+import check_setup  # noqa: E402
 
 
 def _write_executable(path: Path, body: str) -> None:
@@ -19,7 +19,9 @@ def _write_executable(path: Path, body: str) -> None:
 
 
 class TestCheckSetup:
-    def test_check_scripts_matches_current_repo_layout(self, monkeypatch, tmp_path, capsys):
+    def test_check_scripts_matches_current_repo_layout(
+        self, monkeypatch, tmp_path, capsys
+    ):
         monkeypatch.setattr(check_setup.Path, "home", classmethod(lambda cls: tmp_path))
 
         assert check_setup.check_scripts() is True
@@ -28,7 +30,9 @@ class TestCheckSetup:
         assert "ask_claude.py" not in output
         assert "ask_claude.sh" not in output
 
-    def test_main_success_message_references_current_entrypoints(self, monkeypatch, capsys):
+    def test_main_success_message_references_current_entrypoints(
+        self, monkeypatch, capsys
+    ):
         monkeypatch.setattr(check_setup, "check_platform", lambda: True)
         monkeypatch.setattr(check_setup, "check_binaries", lambda: True)
         monkeypatch.setattr(check_setup, "check_scripts", lambda: True)
@@ -110,4 +114,7 @@ exit 0
         assert "shared/refresh_tokens.py" in venvpy_log.read_text()
         assert "evening_brief.py" in venvpy_log.read_text()
         assert "Evening brief failed" in osascript_log.read_text()
-        assert "Script failed with exit code" in (tmp_path / ".evening_brief.log").read_text()
+        assert (
+            "Script failed with exit code"
+            in (tmp_path / ".evening_brief.log").read_text()
+        )

@@ -96,7 +96,9 @@ def _blastdoor_pids() -> list[int] | None:
     try:
         result = subprocess.run(
             ["pgrep", "-f", "MessagesBlastDoorService"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -161,7 +163,8 @@ def send_imessage(
     elif len(pids) > 1:
         log.warning(
             "BlastDoor pile-up detected: %d workers (PIDs %s). Attempting auto-recovery.",
-            len(pids), pids,
+            len(pids),
+            pids,
         )
         _reap_blastdoor_orphans(pids, log)
         time.sleep(1.5)  # give launchd a beat to settle
@@ -171,7 +174,8 @@ def send_imessage(
                 "Skipping iMessage send: BlastDoor still wedged after auto-recovery "
                 "(%d workers remain: %s). Manual fix: force-quit Messages.app via "
                 "Activity Monitor or `kill -9 <PID>` on the orphans, then relaunch Messages.",
-                len(pids), pids,
+                len(pids),
+                pids,
             )
             return False
 

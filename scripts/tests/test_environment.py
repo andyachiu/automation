@@ -13,13 +13,13 @@ If any test fails, run check_setup.py for a human-readable diagnostic:
     uv run check_setup.py
 """
 
+import getpass
 import os
 import platform
 import shutil
 import subprocess
 import sys
 import tomllib
-import getpass
 from pathlib import Path
 
 import pytest
@@ -79,7 +79,9 @@ class TestPlatform:
 
     def test_macos_version(self):
         ver = platform.mac_ver()[0]
-        assert ver, "Could not determine macOS version — platform.mac_ver() returned empty."
+        assert ver, (
+            "Could not determine macOS version — platform.mac_ver() returned empty."
+        )
         major = int(ver.split(".")[0])
         assert major >= 13, (
             f"macOS {ver} detected. This project requires macOS 13 (Ventura) or later "
@@ -174,7 +176,9 @@ class TestScriptPaths:
         """If the global skill symlink exists, verify it points to the right place."""
         global_skill = Path.home() / ".claude" / "skills" / "morning-brief"
         if not global_skill.exists() and not global_skill.is_symlink():
-            pytest.skip("Global skill symlink not yet created — run setup step 7 in README.")
+            pytest.skip(
+                "Global skill symlink not yet created — run setup step 7 in README."
+            )
         assert global_skill.exists(), (
             f"~/.claude/skills/morning-brief symlink is broken: {global_skill} -> {os.readlink(global_skill)}\n"
             f"Fix with: ln -sf {SCRIPTS_DIR / '.claude' / 'skills' / 'morning-brief'} ~/.claude/skills/morning-brief"
@@ -195,8 +199,10 @@ def _keychain_get(service: str) -> str | None:
         [
             "security",
             "find-generic-password",
-            "-a", os.environ.get("USER") or getpass.getuser(),
-            "-s", service,
+            "-a",
+            os.environ.get("USER") or getpass.getuser(),
+            "-s",
+            service,
             "-w",
         ],
         capture_output=True,
@@ -220,18 +226,23 @@ class TestKeychainEntries:
     def test_anthropic_key_looks_valid(self):
         value = _keychain_get("morning-brief-anthropic-key")
         if value is None:
-            pytest.skip("Keychain entry missing — caught by test_keychain_entry_exists.")
+            pytest.skip(
+                "Keychain entry missing — caught by test_keychain_entry_exists."
+            )
         assert value.startswith("sk-ant-"), (
             f"Anthropic API key in Keychain doesn't start with 'sk-ant-' (got: {value[:12]}...).\n"
             "Store the correct key:\n"
-            "  security add-generic-password -a \"$USER\" -s \"morning-brief-anthropic-key\" -w \"sk-ant-...\""
+            '  security add-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w "sk-ant-..."'
         )
 
     def test_google_client_is_valid_json(self):
         import json
+
         value = _keychain_get("morning-brief-google-client")
         if value is None:
-            pytest.skip("Keychain entry missing — caught by test_keychain_entry_exists.")
+            pytest.skip(
+                "Keychain entry missing — caught by test_keychain_entry_exists."
+            )
         try:
             data = json.loads(value)
         except json.JSONDecodeError as e:
@@ -239,19 +250,23 @@ class TestKeychainEntries:
                 f"'morning-brief-google-client' in Keychain is not valid JSON: {e}\n"
                 "Re-run oauth_setup.py to regenerate client credentials."
             )
-        assert "client_id" in data, "morning-brief-google-client JSON missing 'client_id'."
-        assert "client_secret" in data, "morning-brief-google-client JSON missing 'client_secret'."
+        assert "client_id" in data, (
+            "morning-brief-google-client JSON missing 'client_id'."
+        )
+        assert "client_secret" in data, (
+            "morning-brief-google-client JSON missing 'client_secret'."
+        )
 
 
 def _keychain_setup_hint(service: str) -> str:
     hints = {
         "morning-brief-anthropic-key": (
             "Set it with:\n"
-            "  security add-generic-password -a \"$USER\" -s \"morning-brief-anthropic-key\" -w \"sk-ant-...\""
+            '  security add-generic-password -a "$USER" -s "morning-brief-anthropic-key" -w "sk-ant-..."'
         ),
         "morning-brief-imessage-target": (
             "Set it with:\n"
-            "  security add-generic-password -a \"$USER\" -s \"morning-brief-imessage-target\" -w \"+15551234567\""
+            '  security add-generic-password -a "$USER" -s "morning-brief-imessage-target" -w "+15551234567"'
         ),
         "morning-brief-google-token": (
             "Run oauth_setup.py to authorize Google APIs:\n  uv run oauth_setup.py"

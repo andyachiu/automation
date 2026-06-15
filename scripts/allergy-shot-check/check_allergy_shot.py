@@ -56,8 +56,10 @@ def send_imessage(message: str, target: str) -> bool:
 
 def main() -> int:
     if not GOOGLE_TOKEN:
-        print("ERROR: GOOGLE_TOKEN not set. Run oauth_setup.py and refresh tokens first.",
-              file=sys.stderr)
+        print(
+            "ERROR: GOOGLE_TOKEN not set. Run oauth_setup.py and refresh tokens first.",
+            file=sys.stderr,
+        )
         return 1
 
     today = date.today()
@@ -97,11 +99,14 @@ def main() -> int:
         return 0
 
     print("iMessage send failed.", file=sys.stderr)
-    subprocess.run([
-        "osascript", "-e",
-        'display notification "No allergy shot scheduled in 30 days. Book one!" '
-        'with title "Allergy Shot Reminder" sound name "default"',
-    ])
+    subprocess.run(
+        [
+            "osascript",
+            "-e",
+            'display notification "No allergy shot scheduled in 30 days. Book one!" '
+            'with title "Allergy Shot Reminder" sound name "default"',
+        ]
+    )
     return 1
 
 
