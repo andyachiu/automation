@@ -40,7 +40,7 @@ else
 fi
 
 on_failure() {
-    local exit_code=$?
+    local exit_code="${1:-$?}"
     log_err "Deploy failed with exit code $exit_code"
     # Best-effort iMessage notification — skip silently if Keychain unavailable
     IMESSAGE_TARGET="$("$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "morning-brief-imessage-target" -w 2>/dev/null)" || return 0
@@ -65,7 +65,14 @@ on_failure() {
     " 2>/dev/null || true
 }
 
-trap on_failure ERR
+on_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        on_failure "$exit_code"
+    fi
+}
+
+trap on_exit EXIT
 
 log "Starting deploy"
 

@@ -42,7 +42,7 @@ fi
 IMESSAGE_TARGET=""
 
 on_failure() {
-    local exit_code=$?
+    local exit_code="${1:-$?}"
     log_err "Script failed with exit code $exit_code"
     if [[ -n "$IMESSAGE_TARGET" ]]; then
         local last_err=""
@@ -67,7 +67,14 @@ on_failure() {
     fi
 }
 
-trap on_failure ERR
+on_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        on_failure "$exit_code"
+    fi
+}
+
+trap on_exit EXIT
 
 log "Starting run_morning_brief.sh"
 
@@ -114,11 +121,9 @@ run_brief() {
 }
 
 log "Running morning_brief.py..."
-trap - ERR
 if run_brief "$@"; then
     exit 0
 fi
-trap on_failure ERR
 
 log "morning_brief.py failed — retrying in 10 minutes..."
 sleep 600

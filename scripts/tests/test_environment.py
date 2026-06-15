@@ -166,7 +166,7 @@ class TestScriptPaths:
         )
 
     def test_skill_file_exists(self):
-        skill = SCRIPTS_DIR / ".claude" / "skills" / "morning-brief" / "SKILL.md"
+        skill = SCRIPTS_DIR.parent / ".claude" / "skills" / "morning-brief" / "SKILL.md"
         assert skill.exists(), (
             f"Skill file not found: {skill}\n"
             "The /morning-brief Claude Code skill is missing."
@@ -181,7 +181,7 @@ class TestScriptPaths:
             )
         assert global_skill.exists(), (
             f"~/.claude/skills/morning-brief symlink is broken: {global_skill} -> {os.readlink(global_skill)}\n"
-            f"Fix with: ln -sf {SCRIPTS_DIR / '.claude' / 'skills' / 'morning-brief'} ~/.claude/skills/morning-brief"
+            f"Fix with: ln -sf {SCRIPTS_DIR.parent / '.claude' / 'skills' / 'morning-brief'} ~/.claude/skills/morning-brief"
         )
         assert (global_skill / "SKILL.md").exists(), (
             "Global skill symlink exists but SKILL.md is missing at the destination."

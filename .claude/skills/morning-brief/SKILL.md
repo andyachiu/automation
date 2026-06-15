@@ -23,7 +23,7 @@ for x in r['due']:     print('DUE|||'     + x)
 "
 ```
 
-**Do NOT use `osascript tell application \"Reminders\"`** — it hangs indefinitely under Claude Code (AppleEvents + TCC prompt that never gets answered). The sqlite approach is instant and already works from launchd once Full Disk Access is granted to the `uv` binary you use locally.
+**Do NOT use `osascript tell application "Reminders"`** — it hangs indefinitely under Claude Code (AppleEvents + TCC prompt that never gets answered). The sqlite approach is instant and already works from launchd once Full Disk Access is granted to the `uv` binary you use locally.
 
 Parse the output: lines beginning with `OVERDUE|||` are overdue reminders, `DUE|||` are due today. The module only returns reminders that have a due date — reminders without due dates are intentionally excluded. Prefix overdue items with `[OVERDUE]` in the brief. Omit the REMINDERS section entirely if both lists are empty.
 

@@ -1,1 +1,0 @@
-../../../../skills/morning-brief/SKILL.md

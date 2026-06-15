@@ -262,16 +262,16 @@ def check_scripts() -> bool:
             passed = False
 
     # Skill file
-    skill = SCRIPTS_DIR / ".claude" / "skills" / "morning-brief" / "SKILL.md"
+    skill = SCRIPTS_DIR.parent / ".claude" / "skills" / "morning-brief" / "SKILL.md"
     if skill.exists():
         ok(".claude/skills/morning-brief/SKILL.md")
     else:
-        fail("Skill file missing: .claude/skills/morning-brief/SKILL.md")
+        fail(f"Skill file missing: {skill}")
         passed = False
 
     # Global symlink (optional)
     global_skill = Path.home() / ".claude" / "skills" / "morning-brief"
-    skill_source = SCRIPTS_DIR / ".claude" / "skills" / "morning-brief"
+    skill_source = SCRIPTS_DIR.parent / ".claude" / "skills" / "morning-brief"
     if global_skill.is_symlink():
         if global_skill.exists():
             ok(
@@ -283,6 +283,8 @@ def check_scripts() -> bool:
                 f"Fix with:\n  ln -sf {skill_source} ~/.claude/skills/morning-brief",
             )
             passed = False
+    elif global_skill.is_dir() and (global_skill / "SKILL.md").exists():
+        ok("Global skill directory exists and contains SKILL.md")
     else:
         warn(
             "Global skill symlink not created yet (skill only works inside this project dir).\n"

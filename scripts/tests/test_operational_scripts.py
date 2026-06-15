@@ -118,3 +118,72 @@ exit 0
             "Script failed with exit code"
             in (tmp_path / ".evening_brief.log").read_text()
         )
+
+    def test_wrapper_notifies_on_token_refresh_failure(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        osascript_log = tmp_path / "osascript.log"
+        venvpy_log = tmp_path / "venvpy.log"
+
+        _write_executable(
+            bin_dir / "security",
+            """#!/bin/sh
+service=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-s" ]; then
+    service="$2"
+    break
+  fi
+  shift
+done
+case "$service" in
+  morning-brief-anthropic-key) printf '%s\\n' 'sk-ant-test' ;;
+  morning-brief-imessage-target) printf '%s\\n' '+15550001111' ;;
+  *) exit 1 ;;
+esac
+""",
+        )
+        # Fake VENV_PY: fail on refresh
+        _write_executable(
+            bin_dir / "python3",
+            """#!/bin/sh
+printf '%s\\n' "$*" >> "$TEST_VENVPY_LOG"
+case "$*" in
+  *shared/refresh_tokens.py*) exit 1 ;;
+  *) exit 0 ;;
+esac
+""",
+        )
+        _write_executable(
+            bin_dir / "osascript",
+            """#!/bin/sh
+printf '%s\\n' "$*" >> "$TEST_OSASCRIPT_LOG"
+exit 0
+""",
+        )
+
+        env = os.environ.copy()
+        env["HOME"] = str(tmp_path)
+        env["USER"] = "testuser"
+        env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+        env["TEST_OSASCRIPT_LOG"] = str(osascript_log)
+        env["TEST_VENVPY_LOG"] = str(venvpy_log)
+        env["VENV_PY"] = str(bin_dir / "python3")
+        env["SECURITY_BIN"] = str(bin_dir / "security")
+        env["OSASCRIPT_BIN"] = str(bin_dir / "osascript")
+
+        result = subprocess.run(
+            ["/bin/bash", str(SCRIPTS_DIR / "run_evening_brief.sh")],
+            cwd=SCRIPTS_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode != 0
+        assert "shared/refresh_tokens.py" in venvpy_log.read_text()
+        assert "Evening brief failed" in osascript_log.read_text()
+        assert (
+            "Script failed with exit code"
+            in (tmp_path / ".evening_brief.log").read_text()
+        )
