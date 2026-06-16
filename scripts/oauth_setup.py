@@ -48,6 +48,8 @@ TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/documents.readonly",
 ]
 
 REDIRECT_PORT = 18329
