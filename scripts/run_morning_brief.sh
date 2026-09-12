@@ -123,6 +123,14 @@ run_brief() {
 log "Running morning_brief.py..."
 if run_brief "$@"; then
     exit 0
+else
+    brief_exit=$?
+fi
+
+# Exit 3 is reserved for successful delivery followed by a failed memory write.
+if [[ $brief_exit -eq 3 ]]; then
+    log_err "Briefing already sent; memory save failed. Skipping retry to avoid duplicate delivery."
+    exit "$brief_exit"
 fi
 
 log "morning_brief.py failed — retrying in 10 minutes..."

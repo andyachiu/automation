@@ -163,7 +163,7 @@ def test_failure_never_records_a_successful_brief(memory_path, monkeypatch, modu
         monkeypatch.setattr(MemoryStore, "record_delivery", MagicMock(side_effect=MemoryError("Write failed")))
     with pytest.raises(SystemExit) as exc:
         module.main()
-    assert exc.value.code == 1
+    assert exc.value.code == (3 if failure == "memory_write" else 1)
     assert store.snapshot()["briefings"] == 0
     assert send.call_count == (1 if failure in {"delivery", "memory_write"} else 0)
     if failure == "memory_read":

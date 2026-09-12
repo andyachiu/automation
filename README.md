@@ -119,8 +119,9 @@ Persistent briefing memory is implemented; see its [controls and limitations](do
 
 ## Latest Updates
 
+- **Prevent duplicate delivery on memory failure (2026-09-11)** — Added a distinct already-sent exit status and made the morning wrapper skip its retry when saving memory fails after delivery.
+
 - **Persistent briefing memory (2026-09-11)** — Added shared SQLite history, explicit preferences, bounded retrieval and retention, local inspect/delete controls, and offline persistence/failure-path tests.
 - **Portfolio narrative and reader guide (2026-09-11)** — Reorganized the README around the implemented workflow, added a code map and illustrative example, clarified the model/memory boundary, and moved the detailed backlog to the roadmap.
 - **Usability and reliability enhancements (2026-05-26)** — Improved logging, content prioritization, preflight diagnostics, and plist reload support.
 - **Wake scheduling documentation (2026-05-25)** — Documented local Mac availability and scheduling limitations in the operations guide.
-- **Interactive-shell permissions documentation** — Added troubleshooting for terminal-specific Full Disk Access.

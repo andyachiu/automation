@@ -5,12 +5,40 @@ Regression tests for operational wrapper and setup scripts.
 import os
 import subprocess
 import sys
+import pytest
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import check_setup  # noqa: E402
+
+
+@pytest.mark.parametrize("brief_exit,expected_runs", [(0, 1), (3, 1), (1, 2)])
+def test_morning_retry_contract(tmp_path, brief_exit, expected_runs):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls"
+    _write_executable(bin_dir / "security", "#!/bin/sh\nprintf 'fictional-test-value\\n'\n")
+    _write_executable(bin_dir / "osascript", "#!/bin/sh\nexit 0\n")
+    _write_executable(bin_dir / "sleep", "#!/bin/sh\nexit 0\n")
+    _write_executable(bin_dir / "python3", '''#!/bin/sh
+case "$1" in
+  *morning_brief.py) printf 'brief\\n' >> "$TEST_CALLS"; exit "$TEST_EXIT" ;;
+  *) exit 0 ;;
+esac
+''')
+    env = os.environ.copy()
+    env.update(HOME=str(tmp_path), USER="testuser", PATH=f"{bin_dir}:/usr/bin:/bin",
+               VENV_PY=str(bin_dir / "python3"), SECURITY_BIN=str(bin_dir / "security"),
+               OSASCRIPT_BIN=str(bin_dir / "osascript"), TEST_CALLS=str(calls),
+               TEST_EXIT=str(brief_exit))
+    result = subprocess.run(["/bin/bash", str(SCRIPTS_DIR / "run_morning_brief.sh")],
+                            env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == brief_exit
+    assert len(calls.read_text().splitlines()) == expected_runs
+    if brief_exit == 3:
+        assert "Skipping retry" in (tmp_path / ".morning_brief.log").read_text()
 
 
 def _write_executable(path: Path, body: str) -> None:

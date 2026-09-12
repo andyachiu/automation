@@ -11,6 +11,8 @@ import stat
 import time
 from datetime import datetime, timezone
 
+# Wrapper contract: delivery succeeded, so retrying would duplicate the message.
+DELIVERY_SAVED_FAILED_EXIT = 3
 RETENTION_DAYS = 7
 MAX_HISTORY = 14
 CONTEXT_HISTORY = 3

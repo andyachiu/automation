@@ -17,7 +17,7 @@ from shared.briefing_common import (
 from shared.briefing_common import send_imessage as _send_imessage
 from shared.google_api import list_calendar_events, list_unread_messages
 from shared.reminders import get_reminders
-from shared.memory import MemoryError, configured_store
+from shared.memory import MemoryError, configured_store, DELIVERY_SAVED_FAILED_EXIT
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger(__name__)
@@ -391,7 +391,7 @@ def main():
                 memory.record_delivery("morning", message, target)
             except MemoryError as exc:
                 log.error("Briefing was sent, but memory could not be saved: %s. Do not resend just to repair memory.", exc)
-                sys.exit(1)
+                sys.exit(DELIVERY_SAVED_FAILED_EXIT)
     else:
         log.error("Failed to send briefing via iMessage")
         notify_failure(target, "iMessage send failed")
