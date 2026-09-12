@@ -5,8 +5,10 @@
 ## Portfolio and examples
 
 - [ ] Add a fixture-based, offline walkthrough of context → synthesis → delivery, with fictional calendar and email data.
-- [ ] Reconcile the portfolio’s cross-session memory and autonomous terminal-tool claims with the public implementation, or link a separate implementation that supports those claims. This repository currently provides neither.
-- [ ] If persistent memory is introduced, define what is stored, how it is retrieved, retention/deletion controls, and how stale context is handled before presenting it as an implemented capability.
+- [ ] Narrow or separately substantiate the portfolio’s model-directed terminal-tool claim. This repository now implements cross-run briefing memory, but its scheduled Python workflow still owns the tool sequence.
+- [x] Implement persistent briefing memory with bounded retrieval, retention/deletion controls, explicit preferences, and historical-context instructions. See [the memory guide](MEMORY.md).
+- [ ] Evaluate memory-assisted briefings against a no-memory baseline using fictional repeated, changed, stale, and adversarial inputs. Current tests verify storage and integration, not model quality.
+- [ ] Consider structured, source-linked follow-ups only after that evaluation; do not infer task completion from generated briefing text.
 
 ## Obsidian integration
 

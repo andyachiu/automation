@@ -230,6 +230,7 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 
 ```
 ├── morning_brief.py        # Morning briefing (today's schedule, emails, reminders, weather, allergy shot)
+├── briefing_memory.py      # Local history/preference inspection and management
 ├── evening_brief.py        # Evening look-ahead (tomorrow's schedule, reminders, pending replies)
 ├── deploy.sh               # Pulls latest code and syncs dependencies (6am launchd)
 ├── run_morning_brief.sh    # Production wrapper: token refresh + morning brief
@@ -239,6 +240,7 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 │   ├── __init__.py
 │   ├── briefing_common.py  # Claude call (no tools, data inlined) + iMessage send + JSON parse
 │   ├── google_api.py       # Direct REST against googleapis.com (Calendar + Gmail)
+│   ├── memory.py           # Private SQLite history + explicit preferences
 │   ├── reminders.py        # Reads incomplete reminders from macOS Reminders SQLite DB
 │   ├── refresh_tokens.py   # Refreshes the Google access token
 │   └── system.py           # Tiny helpers (e.g. current_user)
@@ -258,3 +260,16 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 ├── pyproject.toml          # Python project config (anthropic>=0.86.0)
 └── TROUBLESHOOTING.md      # Diagnostic guide for OAuth and iMessage issues
 ```
+
+## Persistent briefing memory
+
+Morning and evening entrypoints share recent delivered briefings and explicitly saved presentation preferences. Memory is enabled by default when a recipient is configured. It is stored outside the checkout, survives process restarts and code updates, and is supplied as historical context in subsequent model requests. The separate Claude Code skill does not use this store.
+
+From this directory, inspect counts without displaying personal text:
+
+```bash
+uv run briefing_memory.py status
+uv run briefing_memory.py set-preference style "Use short sentences and spell out acronyms."
+```
+
+See [the memory guide](../docs/MEMORY.md) for retention, deletion, configuration, failure recovery, and the distinction between stored history and current facts. These management commands do not contact external services or send messages.
