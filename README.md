@@ -2,7 +2,7 @@
 
 Scheduled AI briefings that turn calendar events, email, reminders, and weather into a concise message you can act on. Morning and evening runs share bounded, persistent memory so each briefing can build on recent context. Built with Python, Claude, Google APIs, SQLite, and macOS integrations.
 
-This repository is a concrete workflow example linked from [Andy Chiu’s portfolio — Autonomous agent tooling & workflows](https://andyachiu.github.io/#work). The interesting work is the connection between context, model output, and dependable delivery: gathering the right inputs, giving the model a bounded task, and handling the operational details around it.
+The interesting work is the connection between context, model output, and dependable delivery: gathering the right inputs, giving the model a bounded task, and handling the operational details around it.
 
 [Explore the implementation](#how-a-briefing-works) · [Persistent memory](docs/MEMORY.md) · [Setup and operations](scripts/README.md) · [Roadmap](docs/ROADMAP.md)
 
