@@ -1,6 +1,8 @@
-# Morning Brief - macOS Automation Toolkit
+# AI workflow tooling — setup and operations
 
-A macOS automation toolkit that uses Claude AI with Google Calendar and Gmail to deliver daily briefings via iMessage.
+This guide covers running the scheduled briefing workflows. For the project narrative, architecture, implementation map, and capability boundaries, start with the [repository overview](../README.md).
+
+Commands below assume you are in the repository’s `scripts/` directory. Briefing entrypoints deliver real messages; setup checks inspect the local environment and credentials.
 
 ## What It Does
 
@@ -21,7 +23,7 @@ Features:
 ## Requirements
 
 - macOS (uses Keychain, `osascript`, Messages app)
-- Python >= 3.13.6 with [`uv`](https://docs.astral.sh/uv/)
+- Python 3.13.6 (the exact version pinned in `pyproject.toml`) with [`uv`](https://docs.astral.sh/uv/)
 - [Anthropic API key](https://console.anthropic.com/)
 - Google account (for Calendar and Gmail access)
 
@@ -45,7 +47,7 @@ export GOOGLE_OAUTH_CLIENT_ID="<client_id>.apps.googleusercontent.com"
 export GOOGLE_OAUTH_CLIENT_SECRET="<client_secret>"
 uv run oauth_setup.py
 
-# 5. Test it
+# 5. Run a briefing (sends a real iMessage)
 bash run_morning_brief.sh
 ```
 
@@ -135,10 +137,10 @@ bash deploy.sh
 
 ## Claude Code Skill
 
-This repo includes a `/morning-brief` skill for Claude Code. To make it available globally:
+The [repository-level `/morning-brief` skill](../.claude/skills/morning-brief/SKILL.md) describes an assistant-invoked workflow using host-provided connectors. It is separate from the scheduled Python pipeline and depends on a compatible, configured host. To make it available globally from `scripts/`:
 
 ```bash
-ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
+ln -sf "$(cd .. && pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
 ```
 
 Then you can say "get my morning brief" in any Claude Code session.
@@ -163,7 +165,7 @@ deploy.sh (6am)                    run_morning_brief.sh (7am)         run_evenin
 
 ## Output Format
 
-**Morning brief:**
+**Morning brief** (illustrative format):
 ```
 ☀️ Wed Mar 26 | san francisco: ⛅  +62°F
 
@@ -190,7 +192,7 @@ Focus: reply to Prof. Lee before your 2 PM.
 
 On Mondays a `📅 WEEK AHEAD` section is added; on Fridays a `📅 NEXT WEEK` section.
 
-**Evening brief:**
+**Evening brief** (illustrative format):
 ```
 🌙 Tomorrow, Thu Mar 27 | san francisco: 🌧  +58°F
 
@@ -253,10 +255,6 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 │   ├── test_launch_agents.py     # plist render correctness
 │   ├── test_operational_scripts.py  # Wrapper failure-notification behavior
 │   └── test_environment.py       # Environment/integration tests (macOS only)
-├── .claude/skills/
-│   └── morning-brief/      # /morning-brief Claude Code skill
-│       └── SKILL.md
 ├── pyproject.toml          # Python project config (anthropic>=0.86.0)
-├── CLAUDE.md               # Development notes and conventions
 └── TROUBLESHOOTING.md      # Diagnostic guide for OAuth and iMessage issues
 ```
