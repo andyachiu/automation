@@ -17,6 +17,7 @@ from shared.briefing_common import (
 from shared.briefing_common import send_imessage as _send_imessage
 from shared.google_api import list_calendar_events, list_unread_messages
 from shared.reminders import get_reminders
+from shared.memory import MemoryError, configured_store, DELIVERY_SAVED_FAILED_EXIT
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 log = logging.getLogger(__name__)
@@ -173,7 +174,7 @@ Return only valid JSON, no other text.{reminders_block}
 # ── Claude call ───────────────────────────────────────────────────────────────
 
 
-def get_briefing(weather: str, reminders_ctx: str = "") -> str:
+def get_briefing(weather: str, reminders_ctx: str = "", memory_context: str = "") -> str:
     """Fetch calendar/email directly via Google APIs, then call Claude without tools."""
     now = datetime.now()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -193,6 +194,7 @@ def get_briefing(weather: str, reminders_ctx: str = "") -> str:
         user_prompt=build_user_prompt(weather, reminders_ctx),
         calendar_data=events,
         email_data=emails,
+        memory_context=memory_context,
     )
 
 
@@ -367,19 +369,29 @@ def main():
         )
 
     try:
-        raw = get_briefing(weather, reminders_ctx)
+        memory = configured_store() if target else None
+        memory_context = memory.context(target) if memory else ""
+        raw = get_briefing(weather, reminders_ctx, memory_context)
         log.info("Received briefing (%d chars raw)", len(raw))
     except Exception as e:
-        log.error("API error: %s", e)
+        log.error("Briefing preparation failed: %s", e)
         notify_failure(target, str(e)[:100])
         sys.exit(1)
 
     message = format_briefing(raw, weather)
+    if len(message) > MAX_MESSAGE_CHARS:
+        message = message[: MAX_MESSAGE_CHARS - 3] + "..."
     log.info("Formatted briefing (%d chars)", len(message))
 
     success = send_imessage(message, target)
     if success:
         log.info("Briefing sent successfully")
+        if memory:
+            try:
+                memory.record_delivery("morning", message, target)
+            except MemoryError as exc:
+                log.error("Briefing was sent, but memory could not be saved: %s. Do not resend just to repair memory.", exc)
+                sys.exit(DELIVERY_SAVED_FAILED_EXIT)
     else:
         log.error("Failed to send briefing via iMessage")
         notify_failure(target, "iMessage send failed")

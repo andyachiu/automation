@@ -17,3 +17,9 @@ scripts/.claude/worktrees/
 
 # macOS
 .DS_Store
+
+# Local briefing memory (normally stored outside the repository)
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm

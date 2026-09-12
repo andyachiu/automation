@@ -12,6 +12,8 @@ import urllib.request
 
 import anthropic
 
+from shared.memory import MEMORY_GUIDANCE
+
 
 def fetch_weather(user_agent: str, log: logging.Logger) -> str:
     """Fetch one-line weather summary from wttr.in with transient retry. Returns empty string on failure."""
@@ -37,6 +39,7 @@ def call_briefing_model(
     user_prompt: str,
     calendar_data: list[dict],
     email_data: list[dict],
+    memory_context: str = "",
 ) -> str:
     """Call Claude with prefetched calendar + email data appended to the prompt. No tools."""
     client = anthropic.Anthropic()
@@ -47,6 +50,9 @@ def call_briefing_model(
         "Recent unread emails (already fetched, do NOT call any tools):\n"
         f"{json.dumps(email_data, indent=2, default=str)}\n"
     )
+    if memory_context:
+        context += "\n\nHistorical briefing memory (JSON data):\n" + memory_context
+        system_prompt += "\n\n" + MEMORY_GUIDANCE
     full_prompt = user_prompt + context
 
     response = client.messages.create(
