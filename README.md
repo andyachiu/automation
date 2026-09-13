@@ -12,7 +12,7 @@ The interesting work is the connection between context, model output, and depend
 |---|---|---|
 | Morning brief | See the day's schedule, time-sensitive email, reminders, and a suggested focus together | [Morning briefing](scripts/morning_brief.py) |
 | Evening brief | Prepare for tomorrow with a look-ahead and pending-reply summary | [Evening briefing](scripts/evening_brief.py) |
-| Persistent briefing memory | Carry recent delivered briefings and explicit presentation preferences into later runs | [Memory behavior and controls](docs/MEMORY.md) |
+| Persistent briefing memory | Carry recent delivered briefings and explicit presentation preferences into later runs; enable or disable for scheduled briefings | [Memory behavior and controls](docs/MEMORY.md) |
 | Appointment check | Get a targeted reminder when an allergy-shot appointment is missing from the next 30 days | [Deterministic Calendar check](scripts/allergy-shot-check/README.md); no model call |
 | Assistant-invoked brief | Use a documented briefing workflow inside a configured Claude Code session | [Morning-brief skill](.claude/skills/morning-brief/SKILL.md); separate from the scheduled Python pipeline |
 
@@ -32,7 +32,7 @@ flowchart LR
 ```
 
 1. **Gather context.** Fetch Calendar events and unread Gmail metadata/snippets through direct REST calls, read due/overdue Apple Reminders from the local database, and request a weather summary. The morning and evening entrypoints select their own time windows and prompt context.
-2. **Recall and synthesize.** Retrieve the recipient’s three most recent delivered briefings from the last seven days, plus explicitly saved presentation preferences. Pass this historical context and the prefetched information to Claude in one request with a JSON output format. Day-specific instructions support a Monday week-ahead view and Friday next-week preparation.
+2. **Recall and synthesize.** Retrieve the recipient’s three most recent delivered briefings from the last seven days, plus explicitly saved presentation preferences. Pass this historical context and the prefetched information to Claude in one request per Python invocation, with a JSON output format. The morning wrapper can retry a failed invocation after ten minutes, making another model request; it skips retries when delivery succeeded but saving memory failed. Day-specific instructions support a Monday week-ahead view and Friday next-week preparation.
 3. **Make the output useful.** Parse the response and format it into readable sections. Content prioritization and a 1,200-character delivery limit keep the message concise; malformed JSON has a text fallback.
 4. **Deliver and surface failures.** Shell wrappers refresh Google tokens and run the briefing. Authentication and delivery failures surface through non-zero exits and logs; failure notifications are attempted through iMessage. Some optional input failures, such as unavailable weather, degrade gracefully.
 5. **Remember what was delivered.** After the send function reports success, save the final message in a private local SQLite database. Failed deliveries and stdout previews are not remembered. History is capped at 14 briefings, and expired entries are pruned on access; saved preferences remain until removed.
@@ -108,7 +108,7 @@ These are the defaults encoded in the versioned launchd templates, not a claim a
 From `scripts/`, the focused unit/operational suite is:
 
 ```bash
-uv run pytest tests/test_memory.py tests/test_morning_brief.py tests/test_reminders.py tests/test_launch_agents.py tests/test_operational_scripts.py
+uv run pytest tests/test_memory.py tests/test_morning_brief.py tests/test_reminders.py tests/test_launch_agents.py tests/test_operational_scripts.py tests/test_google_api.py
 ```
 
 The separate `test_environment.py` checks the actual local macOS setup and Keychain. See the [operations guide](scripts/README.md#verify-your-setup) before running environment checks or production entrypoints.
@@ -119,9 +119,8 @@ Persistent briefing memory is implemented; see its [controls and limitations](do
 
 ## Latest Updates
 
+- **Complete calendar windows (2026-09-13)** — Follow all Calendar result pages so later appointments are included; later-page failures stop the fetch instead of returning partial data.
+- **Documentation corrections (2026-09-12)** — Fixed skill installation paths, documented the direct-API allergy checker and template-based scheduling, and added memory tests to the project map.
+- **Scheduled memory control (2026-09-12)** — Added installer enable/disable options for both briefings, preserved settings on reinstall, and surfaced reload failures.
+- **Narrow shared assistant permissions (2026-09-12)** — Removed blanket Keychain credential-read approval from Claude Code settings; scheduled scripts retain their existing Keychain access.
 - **Prevent duplicate delivery on memory failure (2026-09-11)** — Added a distinct already-sent exit status and made the morning wrapper skip its retry when saving memory fails after delivery.
-
-- **Persistent briefing memory (2026-09-11)** — Added shared SQLite history, explicit preferences, bounded retrieval and retention, local inspect/delete controls, and offline persistence/failure-path tests.
-- **Reader guide (2026-09-11)** — Reorganized the README around the implemented workflow, added a code map and illustrative example, clarified the model/memory boundary, and moved the detailed backlog to the roadmap.
-- **Usability and reliability enhancements (2026-05-26)** — Improved logging, content prioritization, preflight diagnostics, and plist reload support.
-- **Wake scheduling documentation (2026-05-25)** — Documented local Mac availability and scheduling limitations in the operations guide.

@@ -48,9 +48,10 @@ uv run pytest tests/test_environment.py -v
 ### How to Fix
 
 1. Run scripts directly in your local terminal, not inside any container or remote session.
-2. For the Claude Code skill: ensure the skill is symlinked globally so it runs via your local shell:
+2. For the Claude Code skill: make it available globally. Run from `scripts/`:
    ```bash
-   ln -sf "$(pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
+   mkdir -p ~/.claude/skills
+   ln -sfn "$(cd .. && pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
    ```
 3. Verify Claude Code has permission to run shell commands (check `.claude/settings.local.json`).
 

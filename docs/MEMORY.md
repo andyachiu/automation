@@ -48,7 +48,22 @@ Deleting memory removes rows from this SQLite store with SQLite secure deletion 
 - `AUTOMATION_MEMORY_PATH` overrides the database path. Use a dedicated private directory, not a shared folder. Both entrypoints and management commands must receive the same setting to share a store.
 - No recipient means the existing stdout preview behavior, with no memory read or write. The separate assistant-invoked skill and appointment checker do not use this store.
 
-Once this code is deployed, the next scheduled briefing with a recipient creates the empty database automatically. No migration of old logs or previous conversations occurs. Setting variables in an interactive terminal affects only processes launched from that environment; it does not reconfigure an already loaded launchd job. Follow the repository's renderer-based scheduling conventions for persistent launchd configuration.
+Once this code is deployed, the next scheduled briefing with a recipient creates the empty database automatically. No migration of old logs or previous conversations occurs. Setting variables in an interactive terminal affects only processes launched from that environment; it does not reconfigure an already loaded launchd job.
+
+### Enable or disable memory for scheduled briefings
+
+From `scripts/`, use the installer to save the setting in both morning and evening job definitions and reload the schedules:
+
+```bash
+uv run install_launch_agents.py --memory disabled --reload
+
+# To enable memory again:
+uv run install_launch_agents.py --memory enabled --reload
+```
+
+Disabling bypasses memory reads and writes; it does not delete history or preferences, stop briefing delivery, or change manually launched runs. Re-enabling resumes use of retained data under the normal retention rules. Use the separate `clear --yes` command above to delete stored memory.
+
+The installer preserves each destination plist's memory setting when `--memory` is omitted; a new destination defaults to enabled. A plain reinstall therefore preserves disablement. `--dest` applies to that destination only. Without `--reload`, the files are updated but loaded jobs keep their previous configuration until reloaded. Reloading applies to all four installed agents; a load failure returns a non-zero exit and must be corrected before relying on the new configuration. Do not hand-edit generated plists.
 
 ## Failure behavior and limits
 

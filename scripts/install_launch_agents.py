@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import plistlib
 import subprocess
 from pathlib import Path
 
@@ -54,13 +55,37 @@ def render_template(template_path: Path) -> str:
     )
 
 
-def install_templates(dest_dir: Path) -> list[Path]:
+def install_templates(dest_dir: Path, memory: str | None = None) -> list[Path]:
+    if memory not in (None, "enabled", "disabled"):
+        raise ValueError("memory must be enabled or disabled")
     dest_dir.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
+    pending: list[tuple[Path, str]] = []
 
     for template in sorted(PLISTS_DIR.glob("*.plist.template")):
         rendered = render_template(template)
         dest_path = dest_dir / template.name.removesuffix(".template")
+        if dest_path.name in (
+            "com.andychiu.automation.morning-brief.plist",
+            "com.andychiu.automation.evening-brief.plist",
+        ):
+            value = "1"
+            if memory is not None:
+                value = "1" if memory == "enabled" else "0"
+            elif dest_path.exists():
+                existing = plistlib.loads(dest_path.read_bytes())
+                value = existing.get("EnvironmentVariables", {}).get(
+                    "AUTOMATION_MEMORY_ENABLED", "1"
+                )
+            if value not in ("0", "1"):
+                raise ValueError(f"Invalid AUTOMATION_MEMORY_ENABLED in {dest_path}")
+            settings = plistlib.loads(rendered.encode())
+            settings.setdefault("EnvironmentVariables", {})["AUTOMATION_MEMORY_ENABLED"] = value
+            rendered = plistlib.dumps(settings, sort_keys=False).decode()
+        pending.append((dest_path, rendered))
+
+    # Validate all existing settings before overwriting any installed files.
+    written: list[Path] = []
+    for dest_path, rendered in pending:
         dest_path.write_text(rendered)
         written.append(dest_path)
 
@@ -82,14 +107,20 @@ def main() -> int:
         action="store_true",
         help="Automatically unload and reload the launchd agents.",
     )
+    parser.add_argument(
+        "--memory",
+        choices=("enabled", "disabled"),
+        help="Set memory for both briefings; omitted preserves destination settings (new installs: enabled).",
+    )
     args = parser.parse_args()
 
-    written = install_templates(args.dest.expanduser())
+    written = install_templates(args.dest.expanduser(), memory=args.memory)
     print(f"Installed {len(written)} launchd plist(s) to {args.dest.expanduser()}:")
     for path in written:
         print(f"  - {path}")
 
     if args.reload:
+        failed = False
         print("\nReloading launchd agents...")
         for path in written:
             subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
@@ -99,7 +130,10 @@ def main() -> int:
             if res.returncode == 0:
                 print(f"  Reloaded {path.name}")
             else:
+                failed = True
                 print(f"  Failed to load {path.name}: {res.stderr.strip()}")
+        if failed:
+            return 1
     else:
         print("\nLoad them with:")
         for path in written:

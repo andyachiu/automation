@@ -26,34 +26,36 @@ def list_calendar_events(
     time_max: str,
     calendar_id: str = "primary",
 ) -> list[dict]:
-    params = urllib.parse.urlencode(
-        {
-            "timeMin": time_min,
-            "timeMax": time_max,
-            "singleEvents": "true",
-            "orderBy": "startTime",
-            "maxResults": "250",
-        }
-    )
-    url = (
+    params = {
+        "timeMin": time_min,
+        "timeMax": time_max,
+        "singleEvents": "true",
+        "orderBy": "startTime",
+        "maxResults": "250",
+    }
+    base_url = (
         f"https://www.googleapis.com/calendar/v3/calendars/"
-        f"{urllib.parse.quote(calendar_id)}/events?{params}"
+        f"{urllib.parse.quote(calendar_id)}/events"
     )
-    data = _get_json(url, token)
 
     out: list[dict] = []
-    for ev in data.get("items", []):
-        start = ev.get("start", {})
-        end = ev.get("end", {})
-        out.append(
-            {
-                "start": start.get("dateTime") or start.get("date", ""),
-                "end": end.get("dateTime") or end.get("date", ""),
-                "summary": ev.get("summary", "(no title)"),
-                "location": ev.get("location"),
-            }
-        )
-    return out
+    while True:
+        data = _get_json(f"{base_url}?{urllib.parse.urlencode(params)}", token)
+        for ev in data.get("items", []):
+            start = ev.get("start", {})
+            end = ev.get("end", {})
+            out.append(
+                {
+                    "start": start.get("dateTime") or start.get("date", ""),
+                    "end": end.get("dateTime") or end.get("date", ""),
+                    "summary": ev.get("summary", "(no title)"),
+                    "location": ev.get("location"),
+                }
+            )
+        next_page = data.get("nextPageToken")
+        if not next_page:
+            return out
+        params["pageToken"] = next_page
 
 
 def _fetch_message_metadata(token: str, msg_id: str) -> dict | None:

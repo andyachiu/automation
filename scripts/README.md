@@ -88,6 +88,8 @@ launchctl list | grep andychiu
 
 Default schedule: deploy at 6am, morning brief at 7am weekdays / 9am weekends, evening brief at 9pm daily.
 
+To disable memory for both scheduled briefings, run `uv run install_launch_agents.py --memory disabled --reload` from `scripts/`. Use `--memory enabled --reload` to enable it again. Omitting `--memory` preserves the destination's saved setting (new installs default to enabled). Reload failures exit non-zero. Briefings continue to run, and stored history is retained. See [memory controls](../docs/MEMORY.md#enable-or-disable-memory-for-scheduled-briefings) for manual-run differences and deletion.
+
 ### Mac state requirements
 
 launchd's `StartCalendarInterval` only fires when the Mac is awake. If the Mac is sleeping at the scheduled time, the job fires on next wake (which may be much later). To guarantee on-time delivery — including from sleep or lid-closed travel scenarios — schedule a system wake five minutes before the earliest daily brief:
@@ -140,7 +142,8 @@ bash deploy.sh
 The [repository-level `/morning-brief` skill](../.claude/skills/morning-brief/SKILL.md) describes an assistant-invoked workflow using host-provided connectors. It is separate from the scheduled Python pipeline and depends on a compatible, configured host. To make it available globally from `scripts/`:
 
 ```bash
-ln -sf "$(cd .. && pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
+mkdir -p ~/.claude/skills
+ln -sfn "$(cd .. && pwd)/.claude/skills/morning-brief" ~/.claude/skills/morning-brief
 ```
 
 Then you can say "get my morning brief" in any Claude Code session.
@@ -253,6 +256,8 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 ├── tests/
 │   ├── __init__.py
 │   ├── test_morning_brief.py     # Unit tests for morning brief (offline, fully mocked)
+│   ├── test_memory.py            # Persistence, retention, and briefing memory failure paths
+│   ├── test_google_api.py        # Calendar pagination and later-page failures
 │   ├── test_reminders.py         # Unit tests for reminders module + brief integration
 │   ├── test_launch_agents.py     # plist render correctness
 │   ├── test_operational_scripts.py  # Wrapper failure-notification behavior
