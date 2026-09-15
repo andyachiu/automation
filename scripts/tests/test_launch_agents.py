@@ -15,7 +15,7 @@ class TestInstallLaunchAgents:
     def test_install_renders_repo_and_home_paths(self, tmp_path):
         written = install_launch_agents.install_templates(tmp_path)
 
-        assert len(written) == 5
+        assert len(written) == 6
 
         morning_plist = tmp_path / "com.andychiu.automation.morning-brief.plist"
         body = morning_plist.read_text()
@@ -40,6 +40,17 @@ class TestInstallLaunchAgents:
         assert data["RunAtLoad"] is True
         assert data["StartInterval"] == 300
         assert data["ProgramArguments"][1].endswith("aranet-alert/ensure_aranet_alert_mac.sh")
+
+    def test_aranet_relay_agent_is_kept_alive(self, tmp_path):
+        install_launch_agents.install_templates(tmp_path)
+        path = tmp_path / "com.andychiu.automation.aranet-imessage-relay.plist"
+        data = plistlib.loads(path.read_bytes())
+
+        assert data["KeepAlive"] is True
+        assert data["RunAtLoad"] is True
+        assert data["ProgramArguments"][1].endswith(
+            "aranet-alert/run_ntfy_imessage_relay.sh"
+        )
 
     def test_memory_setting_survives_reinstall_and_can_be_enabled(self, tmp_path):
         for choice, expected in [(None, "1"), ("disabled", "0"), (None, "0"), ("enabled", "1")]:

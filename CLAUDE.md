@@ -72,6 +72,11 @@ Three systems must be functional for run-time executions:
 ### 3. iMessage Target
 - Stored in Keychain: `morning-brief-imessage-target` (phone number or email)
 
+### 4. Aranet CO2 Alerts
+- `aranet-alert-ntfy-topic` — ntfy topic the watcher publishes to
+- `aranet-alert-sensors` — comma-separated `Room=address` pairs
+- `aranet-alert-imessage-targets` — comma-separated iMessage recipients for CO2-high texts
+
 ---
 
 ## 💻 Execution & Setup
@@ -109,3 +114,5 @@ uv run pytest
 - Morning Brief: `~/.morning_brief.log`
 - Evening Brief: `~/.evening_brief.log`
 - Deploy: `~/.morning_brief_deploy.log`
+- Aranet CO2 watcher: `~/.aranet_alert.log`
+- Aranet iMessage relay: `~/.aranet_relay.log`

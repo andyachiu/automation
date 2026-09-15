@@ -257,6 +257,8 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 │   ├── aranet_alert.py         # Aranet4 Bluetooth scan → per-room ntfy CO2 alerts
 │   ├── run_aranet_alert_mac.command  # Mac: Terminal-run restart loop
 │   ├── ensure_aranet_alert_mac.sh    # Mac: launchd job that reopens the launcher
+│   ├── ntfy_imessage_relay.py  # Mac: texts CO2-high alerts (reuses send_imessage)
+│   ├── run_ntfy_imessage_relay.sh    # Mac: Keychain wrapper for the relay
 │   ├── aranet-alert.service    # Pi: systemd unit
 │   └── README.md
 ├── tests/

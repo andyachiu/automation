@@ -14,7 +14,7 @@ The interesting work is the connection between context, model output, and depend
 | Evening brief | Prepare for tomorrow with a look-ahead and pending-reply summary | [Evening briefing](scripts/evening_brief.py) |
 | Persistent briefing memory | Carry recent delivered briefings and explicit presentation preferences into later runs; enable or disable for scheduled briefings | [Memory behavior and controls](docs/MEMORY.md) |
 | Appointment check | Get a targeted reminder when an allergy-shot appointment is missing from the next 30 days | [Deterministic Calendar check](scripts/allergy-shot-check/README.md); no model call |
-| CO2 alerts | Get a phone push when indoor CO2 crosses a threshold, even away from home | [Aranet4 monitor on a Raspberry Pi or Mac](scripts/aranet-alert/README.md); ntfy delivery, no model call |
+| CO2 alerts | Get a phone push when indoor CO2 crosses a threshold, even away from home, and a text for the rooms that need airing | [Aranet4 monitor on a Raspberry Pi or Mac](scripts/aranet-alert/README.md); ntfy delivery, no model call |
 | Assistant-invoked brief | Use a documented briefing workflow inside a configured Claude Code session | [Morning-brief skill](.claude/skills/morning-brief/SKILL.md); separate from the scheduled Python pipeline |
 
 ## How a briefing works
@@ -104,6 +104,7 @@ These are the defaults encoded in the versioned launchd templates, not a claim a
 | `evening-brief` | 9 PM daily | Tomorrow's look-ahead |
 | `allergy-shot-check` | 9 AM Monday, Wednesday, Friday | Appointment check |
 | `aranet-alert` | At login and every 5 minutes | Reopen the Mac CO2 watcher in Terminal if it isn't running |
+| `aranet-imessage-relay` | Always on, restarted by launchd | Text the configured recipients when a room's CO2 alert fires |
 
 On a Raspberry Pi, the CO2 watcher runs under systemd instead. See its [setup guide](scripts/aranet-alert/README.md).
 
@@ -125,8 +126,8 @@ Persistent briefing memory is implemented; see its [controls and limitations](do
 
 ## Latest Updates
 
+- **Texts for CO2 alerts (2026-09-15)** — Added a Mac relay that subscribes to the ntfy topic and sends an iMessage to the configured recipients on each room's CO2-high alert, so texts keep working once the watcher moves to the Pi.
 - **Aranet4 CO2 alerts (2026-09-14)** — Added a watcher that reads Bluetooth advertisements from one or more named Aranet4 sensors and pushes per-room CO2 (1000 ppm), offline, and low-battery alerts through ntfy. It runs under systemd on a Raspberry Pi, or on a Mac through a launchd-supervised Terminal launcher.
 - **Complete calendar windows (2026-09-13)** — Follow all Calendar result pages so later appointments are included; later-page failures stop the fetch instead of returning partial data.
 - **Documentation corrections (2026-09-12)** — Fixed skill installation paths, documented the direct-API allergy checker and template-based scheduling, and added memory tests to the project map.
 - **Scheduled memory control (2026-09-12)** — Added installer enable/disable options for both briefings, preserved settings on reinstall, and surfaced reload failures.
-- **Narrow shared assistant permissions (2026-09-12)** — Removed blanket Keychain credential-read approval from Claude Code settings; scheduled scripts retain their existing Keychain access.

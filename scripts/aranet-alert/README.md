@@ -162,6 +162,28 @@ When the Pi takes over, stop the Mac watcher, then delete `plists/com.andychiu.a
 launchctl unload ~/Library/LaunchAgents/com.andychiu.automation.aranet-alert.plist && pkill -f run_aranet_alert_mac.command
 ```
 
+## Text Alerts (Mac)
+
+`ntfy_imessage_relay.py` subscribes to the ntfy topic and sends an iMessage for every "CO2 high" alert, reusing the briefings' `send_imessage`. Only the Mac can send iMessage, so this runs here whether the watcher runs on the Mac or on the Pi. All-clear, offline, and battery alerts stay push-only.
+
+1. Store the recipients in Keychain, comma-separated:
+
+   ```bash
+   security add-generic-password -a "$USER" -s aranet-alert-imessage-targets -w "+15551234567,+15557654321"
+   ```
+
+2. From `scripts/`, render and load the agent:
+
+   ```bash
+   uv run install_launch_agents.py && launchctl load ~/Library/LaunchAgents/com.andychiu.automation.aranet-imessage-relay.plist
+   ```
+
+launchd restarts the relay whenever it exits, which it does on a dropped stream or a failed send. It subscribes from the current moment, so a restart never re-texts cached alerts. Logs go to `~/.aranet_relay.log`:
+
+```bash
+tail -f ~/.aranet_relay.log
+```
+
 ## Customization
 
 - **Thresholds, stale window, battery level**: set the optional variables in `/etc/aranet-alert.env`, then restart the service.
