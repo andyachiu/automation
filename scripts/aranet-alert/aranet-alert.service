@@ -1,0 +1,16 @@
+[Unit]
+Description=Aranet4 CO2 push alerts
+After=bluetooth.target network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/automation/scripts/aranet-alert
+EnvironmentFile=/etc/aranet-alert.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/.local/bin/uv run --frozen --no-dev aranet_alert.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

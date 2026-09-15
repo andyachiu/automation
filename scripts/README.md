@@ -253,6 +253,12 @@ Google access tokens expire hourly and are refreshed automatically by `shared/re
 │   ├── check_allergy_shot.sh   # Standalone allergy appointment reminder
 │   ├── check_allergy_shot.py   # Direct Calendar fetch + local regex match (no LLM)
 │   └── README.md
+├── aranet-alert/               # Own uv project (aranet4); see its README
+│   ├── aranet_alert.py         # Aranet4 Bluetooth scan → per-room ntfy CO2 alerts
+│   ├── run_aranet_alert_mac.command  # Mac: Terminal-run restart loop
+│   ├── ensure_aranet_alert_mac.sh    # Mac: launchd job that reopens the launcher
+│   ├── aranet-alert.service    # Pi: systemd unit
+│   └── README.md
 ├── tests/
 │   ├── __init__.py
 │   ├── test_morning_brief.py     # Unit tests for morning brief (offline, fully mocked)

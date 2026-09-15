@@ -1,0 +1,16 @@
+[project]
+name = "aranet-alert"
+version = "0.1.0"
+description = "Push ntfy alerts when an Aranet4 reports high CO2"
+requires-python = ">=3.11"
+dependencies = [
+    "aranet4>=2.6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

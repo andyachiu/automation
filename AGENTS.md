@@ -47,6 +47,7 @@ automation/
     │   ├── google_api.py       # REST client for Google Calendar & Gmail
     │   └── system.py           # Core OS/user helper utilities
     ├── allergy-shot-check/     # Standalone allergy shot cron check
+    ├── aranet-alert/           # Aranet4 CO2 → ntfy alerts (own uv project; Pi via systemd, or Mac via launchd-supervised Terminal launcher)
     ├── tests/                  # Pytest unit and integration test suite
     └── pyproject.toml          # uv python project configuration
 ```
