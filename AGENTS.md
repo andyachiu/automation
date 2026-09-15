@@ -1,6 +1,6 @@
 # automation — Agent Guidelines
 
-These guidelines define repository rules, architecture, and conventions for all AI assistants (Gemini, Codex, Cursor, etc.) working in this workspace.
+These guidelines define repository rules, architecture, and conventions for all AI assistants (Gemini, Claude, Cursor, etc.) working in this workspace.
 
 ---
 
@@ -27,7 +27,7 @@ launchd-driven briefs must exit non-zero on permission, auth, or delivery failur
 ```
 automation/
 ├── plists/                 # launchd agents (copy to ~/Library/LaunchAgents/ to schedule)
-├── .Codex/
+├── .claude/
 │   └── skills/
 │       └── morning-brief/  # Custom agent skill definitions
 │           └── SKILL.md
