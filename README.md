@@ -106,7 +106,7 @@ These are the defaults encoded in the versioned launchd templates, not a claim a
 | `aranet-alert` | At login and every 5 minutes | Reopen the Mac CO2 watcher in Terminal if it isn't running |
 | `aranet-imessage-relay` | Always on, restarted by launchd | Text the configured recipients when a room's CO2 alert fires |
 
-On a Raspberry Pi, the CO2 watcher runs under systemd instead. See its [setup guide](scripts/aranet-alert/README.md).
+Both CO2 agents are started and stopped with the commands in [Start and Stop on the Mac](scripts/aranet-alert/README.md#start-and-stop-on-the-mac). On a Raspberry Pi, the watcher runs under systemd instead; see the same [setup guide](scripts/aranet-alert/README.md).
 
 ### Tests
 
