@@ -126,8 +126,8 @@ Persistent briefing memory is implemented; see its [controls and limitations](do
 
 ## Latest Updates
 
+- **Poll on the sensor's own schedule (2026-09-15)** — The CO2 watcher now sleeps until each sensor's next measurement is due, reported in its Bluetooth broadcast, cutting scans from 60 an hour to about 12. The Mac launcher stops its watcher on exit, so a restart can no longer leave two scanning at once.
 - **Texts for CO2 alerts (2026-09-15)** — Added a Mac relay that subscribes to the ntfy topic and sends an iMessage to the configured recipients on each room's CO2-high alert, so texts keep working once the watcher moves to the Pi.
 - **Aranet4 CO2 alerts (2026-09-14)** — Added a watcher that reads Bluetooth advertisements from one or more named Aranet4 sensors and pushes per-room CO2 (1000 ppm), offline, and low-battery alerts through ntfy. It runs under systemd on a Raspberry Pi, or on a Mac through a launchd-supervised Terminal launcher.
 - **Complete calendar windows (2026-09-13)** — Follow all Calendar result pages so later appointments are included; later-page failures stop the fetch instead of returning partial data.
 - **Documentation corrections (2026-09-12)** — Fixed skill installation paths, documented the direct-API allergy checker and template-based scheduling, and added memory tests to the project map.
-- **Scheduled memory control (2026-09-12)** — Added installer enable/disable options for both briefings, preserved settings on reinstall, and surfaced reload failures.

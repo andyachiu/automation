@@ -16,15 +16,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import sys
 import time
 import urllib.request
 from dataclasses import dataclass
 
 import aranet4
 
-POLL_SECONDS = 60
 SCAN_SECONDS = 10
+POLL_SECONDS = 60  # fallback when no sensor reports its measurement interval
+SETTLE_SECONDS = 5  # wake just after the sensor's next measurement, not before
+MIN_SLEEP_SECONDS = 30
+MAX_SLEEP_SECONDS = 600
 
 Alert = tuple[str, str, str]  # (title, message, ntfy priority)
 
@@ -183,6 +185,26 @@ def list_nearby() -> int:
     return 0
 
 
+def log(message: str) -> None:
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+
+
+def next_delay(readings: list) -> int:
+    """Sleep until the earliest sensor's next measurement.
+
+    Each advertisement carries the sensor's measurement interval and how long
+    ago it measured, so polling faster than that only re-reads the same value.
+    """
+    waits = [
+        r.interval - r.ago
+        for r in readings
+        if getattr(r, "interval", 0) > 0 and r.ago >= 0
+    ]
+    if not waits:
+        return POLL_SECONDS
+    return max(MIN_SLEEP_SECONDS, min(min(waits) + SETTLE_SECONDS, MAX_SLEEP_SECONDS))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Push ntfy alerts for Aranet4 CO2 readings."
@@ -215,19 +237,21 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         now = time.monotonic()
         found = scan()
+        fresh = []
         for address, monitor in monitors.items():
             readings = getattr(found.get(address), "readings", None)
             if readings and readings.co2 > 0:
-                print(
+                log(
                     f"{monitor.name}: CO2 {readings.co2} ppm, battery {readings.battery}%"
                 )
+                fresh.append(readings)
                 alerts = monitor.on_reading(readings.co2, readings.battery, now)
             else:
                 alerts = monitor.on_missing(now)
             for title, message, priority in alerts:
-                print(f"ALERT: {title} — {message}", file=sys.stderr)
+                log(f"ALERT: {title} — {message}")
                 notify(config, title, message, priority)
-        time.sleep(POLL_SECONDS - SCAN_SECONDS)
+        time.sleep(next_delay(fresh))
 
 
 if __name__ == "__main__":

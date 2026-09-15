@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +75,26 @@ def test_parse_sensors_names_and_normalizes_addresses():
 def test_parse_sensors_rejects_bad_entries(value, match):
     with pytest.raises(SystemExit, match=match):
         parse_sensors(value)
+
+
+def _reading(interval, ago):
+    return SimpleNamespace(interval=interval, ago=ago)
+
+
+def test_next_delay_waits_for_the_earliest_next_measurement():
+    assert aranet_alert.next_delay([_reading(300, 120), _reading(300, 20)]) == 185
+
+
+def test_next_delay_falls_back_without_usable_readings():
+    assert aranet_alert.next_delay([]) == aranet_alert.POLL_SECONDS
+    assert aranet_alert.next_delay([_reading(-1, -1)]) == aranet_alert.POLL_SECONDS
+
+
+def test_next_delay_is_clamped():
+    assert aranet_alert.next_delay([_reading(60, 59)]) == aranet_alert.MIN_SLEEP_SECONDS
+    assert (
+        aranet_alert.next_delay([_reading(3600, 0)]) == aranet_alert.MAX_SLEEP_SECONDS
+    )
 
 
 def test_load_config_requires_sensors_and_topic():

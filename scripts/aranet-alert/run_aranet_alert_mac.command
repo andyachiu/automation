@@ -26,6 +26,21 @@ export PYTHONUNBUFFERED=1
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
+# Closing the window or killing this script must take the watcher with it.
+# Orphans would keep scanning, and the launchd supervisor would start a second
+# watcher on top of them, doubling every alert.
+cleanup() {
+  [[ -n "${job:-}" ]] && kill "$job" 2>/dev/null
+  pkill -f "$SCRIPT_DIR/aranet_alert.py" 2>/dev/null
+  return 0
+}
+terminate() {
+  cleanup
+  exit 143
+}
+trap cleanup EXIT
+trap terminate INT TERM HUP
+
 keychain() { "$SECURITY_BIN" find-generic-password -a "$KEYCHAIN_USER" -s "$1" -w 2>/dev/null; }
 
 notified=0
@@ -36,8 +51,12 @@ while true; do
     export NTFY_TOPIC ARANET_SENSORS
     log "Starting watcher"
     started=$SECONDS
-    caffeinate -i "$UV_BIN" run --project "$SCRIPT_DIR" --frozen --no-dev "$SCRIPT_DIR/aranet_alert.py" 2>&1 | tee -a "$LOG_FILE"
-    status=${PIPESTATUS[0]}
+    # Background job + wait: bash defers signal handlers until the foreground
+    # child exits, which would leave cleanup() unable to stop the watcher.
+    { caffeinate -i "$UV_BIN" run --project "$SCRIPT_DIR" --frozen --no-dev "$SCRIPT_DIR/aranet_alert.py" 2>&1 | tee -a "$LOG_FILE"; } &
+    job=$!
+    wait "$job"
+    status=$?
     log "ERROR: Watcher exited with status $status; restarting in 30 seconds"
 
     # Notify once per failure burst: a crash loop shouldn't push every 30 seconds.
@@ -52,5 +71,6 @@ while true; do
         || log "ERROR: Could not send restart notification"
     fi
   fi
-  sleep 30
+  sleep 30 &
+  wait $!
 done

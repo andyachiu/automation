@@ -30,7 +30,7 @@ launchctl kickstart -k gui/$(id -u)/com.andychiu.automation.aranet-alert
 launchctl list | grep aranet && pgrep -fl "run_aranet_alert_mac.command|ntfy_imessage_relay"
 ```
 
-**Watch the logs.** The watcher prints one line per room per minute:
+**Watch the logs.** The watcher prints one line per room per measurement:
 
 ```bash
 tail -f ~/.aranet_alert.log ~/.aranet_relay.log
@@ -56,7 +56,7 @@ curl -fsS -H "Title: Test Room: CO2 high" -d "Test alert, please ignore." "https
 
 ## How It Works
 
-1. The watcher scans for the sensors' Bluetooth broadcasts every 60 seconds, started by systemd on the Pi or by the Terminal launcher on the Mac.
+1. The watcher scans for the sensors' Bluetooth broadcasts, started by systemd on the Pi or by the Terminal launcher on the Mac. Each broadcast reports the sensor's measurement interval and how long ago it measured, so the watcher sleeps until the next reading is due instead of re-reading the same value. Scanning costs the sensor nothing: it broadcasts whether or not anything listens.
 2. `aranet_alert.py` tracks each sensor separately and puts its room name in the alert title (for example "Bedroom: CO2 high"). It compares CO2 against two thresholds. It alerts once when CO2 reaches `CO2_HIGH` (1000 ppm, where the Aranet4 display turns amber) and sends an all-clear once it drops below `CO2_CLEAR` (900 ppm). The gap keeps readings near a threshold from flapping.
 3. It also alerts once when the sensor hasn't been seen for `STALE_MINUTES` (15) and when the battery reaches `LOW_BATTERY` (10%).
 4. Alerts are an HTTP POST to your ntfy topic. The ntfy app on your phone and iPad shows them as push notifications.
@@ -183,7 +183,7 @@ cd ~/automation && git pull --ff-only && cd scripts/aranet-alert && uv sync --fr
 
 ## Mac Setup (one-time)
 
-A Mac that stays on can stand in for the Pi. launchd can't run the watcher directly: macOS only allows Bluetooth for a process that an app with Bluetooth permission is responsible for. Instead, a launchd agent opens `run_aranet_alert_mac.command` in a Terminal window at login, and again within 5 minutes if it stops. The launcher restarts the watcher 30 seconds after any exit. It sends an "Aranet watcher restarting" push on the first exit after a healthy run, so a crash loop doesn't push every 30 seconds.
+A Mac that stays on can stand in for the Pi. launchd can't run the watcher directly: macOS only allows Bluetooth for a process that an app with Bluetooth permission is responsible for. Instead, a launchd agent opens `run_aranet_alert_mac.command` in a Terminal window at login, and again within 5 minutes if it stops. The launcher restarts the watcher 30 seconds after any exit. It sends an "Aranet watcher restarting" push on the first exit after a healthy run, so a crash loop doesn't push every 30 seconds. Closing the Terminal window, or killing the launcher, stops the watcher with it; leaving orphans behind would let the supervisor start a second watcher and double every alert.
 
 1. Store the settings in Keychain. On a Mac, `--scan` prints CoreBluetooth IDs instead of MAC addresses; use those IDs.
 
@@ -240,7 +240,7 @@ tail -f ~/.aranet_relay.log
 ## Customization
 
 - **Thresholds, stale window, battery level**: on the Pi, set the optional variables in `/etc/aranet-alert.env` and restart the service. On the Mac, edit the defaults in `Config` in `aranet_alert.py` and restart the watcher.
-- **Scan cadence**: `POLL_SECONDS` in `aranet_alert.py`. The sensor itself measures every 1–10 minutes (set in the Aranet Home app), so polling faster than that interval gains nothing.
+- **Scan cadence**: set the measurement interval in the Aranet Home app (1–10 minutes) and the watcher follows it. `next_delay()` in `aranet_alert.py` clamps the wait between `MIN_SLEEP_SECONDS` and `MAX_SLEEP_SECONDS`, and falls back to `POLL_SECONDS` when no sensor is heard.
 - **Notification method**: edit `notify()` in `aranet_alert.py`.
 
 ## Test
