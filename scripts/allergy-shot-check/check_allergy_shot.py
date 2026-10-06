@@ -28,8 +28,9 @@ from shared.google_api import list_calendar_events  # noqa: E402
 GOOGLE_TOKEN = os.environ.get("GOOGLE_TOKEN", "")
 IMESSAGE_TARGET = os.environ.get("IMESSAGE_TARGET", "")
 
-# Match "allergy" / "allergy shot" but skip blood draws and consultations.
-ALLERGY_RE = re.compile(r"\ballergy\b", re.IGNORECASE)
+# Match "allergy" / "allergy shot" / Stanford's "Shot Appointment" but skip
+# blood draws and consultations.
+ALLERGY_RE = re.compile(r"\b(allergy|shot\s+appointment)\b", re.IGNORECASE)
 EXCLUDE_RE = re.compile(r"\b(blood\s*draw|consult(ation)?)\b", re.IGNORECASE)
 
 

@@ -17,8 +17,15 @@ UV_BIN="${UV_BIN:-uv}"
 SECURITY_BIN="${SECURITY_BIN:-security}"
 KEYCHAIN_USER="$(automation_current_user)"
 
+# Under launchd, stdout is already the log file (StandardOutPath); only tee interactively.
+if [[ -t 1 ]]; then
+  to_log() { tee -a "$LOG_FILE"; }
+else
+  to_log() { cat; }
+fi
+
 log() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | to_log
 }
 
 log "=== Allergy Shot Check Starting ==="
@@ -32,7 +39,7 @@ export IMESSAGE_TARGET
 
 # Refresh OAuth tokens (fail loud — never proceed on a stale token)
 log "Refreshing OAuth tokens..."
-"$UV_BIN" run --project "$SCRIPTS_ROOT" "$SCRIPTS_ROOT/shared/refresh_tokens.py" 2>&1 | tee -a "$LOG_FILE" || {
+"$UV_BIN" run --project "$SCRIPTS_ROOT" "$SCRIPTS_ROOT/shared/refresh_tokens.py" 2>&1 | to_log || {
   log "ERROR: Token refresh failed. Re-run: uv run oauth_setup.py"
   exit 1
 }
@@ -46,6 +53,6 @@ export GOOGLE_TOKEN
 
 # Run calendar check
 log "Running calendar check..."
-"$UV_BIN" run --project "$SCRIPTS_ROOT" "$SCRIPT_DIR/check_allergy_shot.py" 2>&1 | tee -a "$LOG_FILE"
+"$UV_BIN" run --project "$SCRIPTS_ROOT" "$SCRIPT_DIR/check_allergy_shot.py" 2>&1 | to_log
 
 log "=== Allergy Shot Check Complete ==="
