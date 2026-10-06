@@ -15,6 +15,7 @@ The interesting work is the connection between context, model output, and depend
 | Persistent briefing memory | Carry recent delivered briefings and explicit presentation preferences into later runs; enable or disable for scheduled briefings | [Memory behavior and controls](docs/MEMORY.md) |
 | Appointment check | Get a targeted reminder when an allergy-shot appointment is missing from the next 30 days | [Deterministic Calendar check](scripts/allergy-shot-check/README.md); no model call |
 | CO2 alerts | Get a phone push when indoor CO2 crosses a threshold, even away from home, and a text for the rooms that need airing | [Aranet4 monitor on a Raspberry Pi or Mac](scripts/aranet-alert/README.md); ntfy delivery, no model call |
+| Reminders ↔ TASKS.md sync | New Apple Reminders show up in `TASKS.md`, and checking a task off in either place completes it in the other | [`reminders_sync.py`](scripts/reminders_sync.py); SQLite reads, one AppleScript call per completion, no model call |
 | Assistant-invoked brief | Use a documented briefing workflow inside a configured Claude Code session | [Morning-brief skill](.claude/skills/morning-brief/SKILL.md); separate from the scheduled Python pipeline |
 
 ## How a briefing works
@@ -103,6 +104,7 @@ These are the defaults encoded in the versioned launchd templates, not a claim a
 | `morning-brief` | 7 AM weekdays; 9 AM weekends | Today's briefing |
 | `evening-brief` | 9 PM daily | Tomorrow's look-ahead |
 | `allergy-shot-check` | 9 AM Monday, Wednesday, Friday | Appointment check |
+| `reminders-sync` | At load and hourly | Two-way sync between Apple Reminders and `TASKS.md` |
 | `aranet-alert` | At login and every 5 minutes | Reopen the Mac CO2 watcher in Terminal if it isn't running |
 | `aranet-imessage-relay` | Always on, restarted by launchd | Text the configured recipients when a room's CO2 alert fires |
 
@@ -113,7 +115,7 @@ Both CO2 agents are started and stopped with the commands in [Start and Stop on 
 From `scripts/`, the focused unit/operational suite is:
 
 ```bash
-uv run pytest tests/test_memory.py tests/test_morning_brief.py tests/test_reminders.py tests/test_launch_agents.py tests/test_operational_scripts.py tests/test_google_api.py
+uv run pytest tests/test_memory.py tests/test_morning_brief.py tests/test_reminders.py tests/test_reminders_sync.py tests/test_launch_agents.py tests/test_operational_scripts.py tests/test_google_api.py
 ```
 
 The Aranet alert is its own uv project: from `scripts/aranet-alert/`, run `uv run pytest`.
@@ -124,10 +126,12 @@ The separate `test_environment.py` checks the actual local macOS setup and Keych
 
 Persistent briefing memory is implemented; see its [controls and limitations](docs/MEMORY.md). The [workflow roadmap](docs/ROADMAP.md) tracks future Obsidian integration, a standalone offline walkthrough, and evaluation of whether remembered context improves briefing quality. Those follow-ups remain planned.
 
+Reminders sync: a synced line deleted from `TASKS.md` comes back on the next pull (check it off instead). A small state file of seen UUIDs would let deletions stick.
+
 ## Latest Updates
 
 - **Shot check matches "Shot Appointment" (2026-10-06)** — The allergy-shot check now also matches Stanford's "Shot Appointment" titles; before, it missed booked shots and sent false reminders. Scheduled runs no longer write each log line twice.
+- **Reminders sync rebuilt (2026-10-06)** — Recreated the lost `reminders_sync.py` as a local hourly launchd job instead of a cloud-dispatched task. It reads the Reminders DB directly (avoiding the old AppleEvent timeouts), tags synced lines with `<!-- rem:UUID -->`, keeps `TASKS.md` gitignored at the repo root, and posts a macOS notification on failure.
 - **Poll on the sensor's own schedule (2026-09-15)** — The CO2 watcher now sleeps until each sensor's next measurement is due, reported in its Bluetooth broadcast, cutting scans from 60 an hour to about 12. The Mac launcher stops its watcher on exit, so a restart can no longer leave two scanning at once.
 - **Texts for CO2 alerts (2026-09-15)** — Added a Mac relay that subscribes to the ntfy topic and sends an iMessage to the configured recipients on each room's CO2-high alert, so texts keep working once the watcher moves to the Pi.
 - **Aranet4 CO2 alerts (2026-09-14)** — Added a watcher that reads Bluetooth advertisements from one or more named Aranet4 sensors and pushes per-room CO2 (1000 ppm), offline, and low-battery alerts through ntfy. It runs under systemd on a Raspberry Pi, or on a Mac through a launchd-supervised Terminal launcher.
-- **Complete calendar windows (2026-09-13)** — Follow all Calendar result pages so later appointments are included; later-page failures stop the fetch instead of returning partial data.

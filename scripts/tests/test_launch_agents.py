@@ -15,7 +15,7 @@ class TestInstallLaunchAgents:
     def test_install_renders_repo_and_home_paths(self, tmp_path):
         written = install_launch_agents.install_templates(tmp_path)
 
-        assert len(written) == 6
+        assert len(written) == 7
 
         morning_plist = tmp_path / "com.andychiu.automation.morning-brief.plist"
         body = morning_plist.read_text()
@@ -82,3 +82,12 @@ class TestInstallLaunchAgents:
             lambda *args, **kwargs: SimpleNamespace(returncode=1, stderr="load failed"),
         )
         assert install_launch_agents.main() == 1
+
+
+def test_reminders_sync_plist_runs_hourly_wrapper(tmp_path):
+    install_launch_agents.install_templates(tmp_path)
+    path = tmp_path / "com.andychiu.automation.reminders-sync.plist"
+    data = plistlib.loads(path.read_bytes())
+    assert data["StartInterval"] == 3600
+    assert data["ProgramArguments"][-1].endswith("/run_reminders_sync.sh")
+    assert data["StandardErrorPath"].endswith("/.reminders_sync.log")

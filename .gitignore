@@ -23,3 +23,7 @@ scripts/.claude/worktrees/
 *.sqlite3-journal
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Personal task list synced from Apple Reminders
+TASKS.md
+TASKS.md.tmp
