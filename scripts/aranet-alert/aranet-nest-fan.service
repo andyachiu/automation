@@ -1,0 +1,15 @@
+[Unit]
+Description=CO2-driven Nest fan timer
+After=network-online.target aranet-alert.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=andychiu
+WorkingDirectory=/home/andychiu/automation/scripts/aranet-alert
+EnvironmentFile=/etc/aranet-alert.env
+Environment=NEST_CREDENTIALS=/home/andychiu/.config/aranet/nest.json
+ExecStart=/home/andychiu/automation/scripts/aranet-alert/.venv/bin/python nest_fan.py --live
+TimeoutStartSec=90
+NoNewPrivileges=true
+PrivateTmp=true

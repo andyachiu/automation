@@ -15,6 +15,7 @@ The interesting work is the connection between context, model output, and depend
 | Persistent briefing memory | Carry recent delivered briefings and explicit presentation preferences into later runs; enable or disable for scheduled briefings | [Memory behavior and controls](docs/MEMORY.md) |
 | Appointment check | Get a targeted reminder when an allergy-shot appointment is missing from the next 30 days | [Deterministic Calendar check](scripts/allergy-shot-check/README.md); no model call |
 | CO2 alerts | Get a phone push when indoor CO2 crosses a threshold, even away from home, and a text for the rooms that need airing | [Aranet4 monitor on a Raspberry Pi or Mac](scripts/aranet-alert/README.md); ntfy delivery, no model call |
+| Air-quality history | Compare room CO2, temperature (°F), humidity, pressure, freshness, and peaks over 2 hours, 6 hours, 24 hours, or 7 days | [Pi dashboard setup](scripts/aranet-alert/README.md#air-quality-dashboard), reachable with Tailscale; SQLite keeps 90 days |
 | Reminders ↔ TASKS.md sync | New Apple Reminders show up in `TASKS.md`, and checking a task off in either place completes it in the other | [`reminders_sync.py`](scripts/reminders_sync.py); SQLite reads, one AppleScript call per completion, no model call |
 | Assistant-invoked brief | Use a documented briefing workflow inside a configured Claude Code session | [Morning-brief skill](.claude/skills/morning-brief/SKILL.md); separate from the scheduled Python pipeline |
 
@@ -105,10 +106,12 @@ These are the defaults encoded in the versioned launchd templates, not a claim a
 | `evening-brief` | 9 PM daily | Tomorrow's look-ahead |
 | `allergy-shot-check` | 9 AM Monday, Wednesday, Friday | Appointment check |
 | `reminders-sync` | At load and hourly | Two-way sync between Apple Reminders and `TASKS.md` |
-| `aranet-alert` | At login and every 5 minutes | Reopen the Mac CO2 watcher in Terminal if it isn't running |
+| `aranet-alert` | Always on, Pi systemd service | Monitor both rooms on `casapi1`; Mac watcher disabled |
+| `aranet-nest-fan` | Every minute, persistent Pi user timer | Run a bounded 15-minute fan timer for sustained high CO2; ntfy-only accepted-run alerts; Production OAuth verified |
+| `aranet-dashboard` | Always on, Pi systemd service | Serve read-only air-quality history on Tailscale port 8080 |
 | `aranet-imessage-relay` | Always on, restarted by launchd | Text the configured recipients when a room's CO2 alert fires |
 
-Both CO2 agents are started and stopped with the commands in [Start and Stop on the Mac](scripts/aranet-alert/README.md#start-and-stop-on-the-mac). On a Raspberry Pi, the watcher runs under systemd instead; see the same [setup guide](scripts/aranet-alert/README.md).
+The CO2 watcher runs under systemd on `casapi1`; the iMessage relay remains on the Mac. See the [current deployment](scripts/aranet-alert/README.md#current-pi-deployment-2026-10-06) and [Pi service commands](scripts/aranet-alert/README.md#start-and-stop-on-the-pi).
 
 ### Tests
 
@@ -124,14 +127,23 @@ The separate `test_environment.py` checks the actual local macOS setup and Keych
 
 ## TODO / Ideas
 
+- [x] Complete Nest fan integration: Production OAuth credentials installed and refreshed successfully on the Pi; Fan trait read OFF and persistent timer enabled/active. Public app pages are at https://andychiu.me/casapi/. October 7 live timer control passed; CO2 observations remain exploratory because the Master sensor had just been moved/resumed reporting.
+
+- Collect an overnight baseline in the new air-quality dashboard; history starts at deployment, with no fabricated backfill.
+
+- Check sustained Bluetooth coverage after returning sensors to their final room locations. Pi service activation, notification submission, Mac watcher retirement, and iPhone SSH setup are complete; see the [deployment notes](scripts/aranet-alert/README.md#current-pi-deployment-2026-10-06).
+
 Persistent briefing memory is implemented; see its [controls and limitations](docs/MEMORY.md). The [workflow roadmap](docs/ROADMAP.md) tracks future Obsidian integration, a standalone offline walkthrough, and evaluation of whether remembered context improves briefing quality. Those follow-ups remain planned.
 
 Reminders sync: a synced line deleted from `TASKS.md` comes back on the next pull (check it off instead). A small state file of seen UUIDs would let deletions stick.
 
 ## Latest Updates
 
-- **Shot check matches "Shot Appointment" (2026-10-06)** — The allergy-shot check now also matches Stanford's "Shot Appointment" titles; before, it missed booked shots and sent false reminders. Scheduled runs no longer write each log line twice.
-- **Reminders sync rebuilt (2026-10-06)** — Recreated the lost `reminders_sync.py` as a local hourly launchd job instead of a cloud-dispatched task. It reads the Reminders DB directly (avoiding the old AppleEvent timeouts), tags synced lines with `<!-- rem:UUID -->`, keeps `TASKS.md` gitignored at the repo root, and posts a macOS notification on failure.
-- **Poll on the sensor's own schedule (2026-09-15)** — The CO2 watcher now sleeps until each sensor's next measurement is due, reported in its Bluetooth broadcast, cutting scans from 60 an hour to about 12. The Mac launcher stops its watcher on exit, so a restart can no longer leave two scanning at once.
-- **Texts for CO2 alerts (2026-09-15)** — Added a Mac relay that subscribes to the ntfy topic and sends an iMessage to the configured recipients on each room's CO2-high alert, so texts keep working once the watcher moves to the Pi.
-- **Aranet4 CO2 alerts (2026-09-14)** — Added a watcher that reads Bluetooth advertisements from one or more named Aranet4 sensors and pushes per-room CO2 (1000 ppm), offline, and low-battery alerts through ntfy. It runs under systemd on a Raspberry Pi, or on a Mac through a launchd-supervised Terminal launcher.
+- **Two-hour air-quality view (2026-10-08)** — Added a 2-hour history filter for CO2, temperature, humidity, and pressure.
+
+- **Temperature, pressure, and dark mode (2026-10-08)** — Dashboard now charts temperature in Fahrenheit, relative humidity, and sensor pressure across all history windows, preserves existing records, and remembers light/dark preference with a separate top-right theme control. Pressure starts with new observations.
+
+- **Fan-start alerts (2026-10-07)** — Pi sends one ntfy notification after Google accepts a fan timer; iMessage relay ignores it. Eight behavior tests pass and a labeled notification-only systemd test was accepted by ntfy.
+
+- **CasaPi OAuth website published (2026-10-07)** — Added app information, privacy, and terms pages at andychiu.me/casapi/ and saved Google branding. Google confirms In production; new credentials are installed on the Pi and token refresh plus read-only Fan access passed.
+- **Nest fan automation enabled (2026-10-07)** — Persistent Pi user timer checks every minute with 15-minute runs, hourly cooldown and four-attempt daily limit. Live timer control and Production OAuth refresh passed. Cloud billing stays unlinked.

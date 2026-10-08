@@ -1,0 +1,10 @@
+[Unit]
+Description=Check CO2 for Nest fan control every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+Unit=aranet-nest-fan.service
+
+[Install]
+WantedBy=timers.target

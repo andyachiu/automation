@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,6 +9,46 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import aranet_alert  # noqa: E402
 from aranet_alert import Config, Monitor, load_config, parse_sensors  # noqa: E402
+
+
+def test_scan_accepts_manufacturer_only_broadcasts_and_ignores_unrelated_devices(monkeypatch):
+    stopped = []
+    parsed = []
+    reading = SimpleNamespace(co2=991)
+    manufacturer = aranet_alert.aranet4.client.Aranet4.MANUFACTURER_ID
+    service = aranet_alert.aranet4.client.Aranet4.SERVICE_SAF_TEHNIKA
+
+    def parse(device, advertisement):
+        parsed.append(device.address)
+        return SimpleNamespace(device=device, readings=advertisement.reading)
+
+    class Scanner:
+        def __init__(self, detection_callback, **kwargs):
+            assert not kwargs.get('service_uuids')
+            self.callback = detection_callback
+
+        async def start(self):
+            for address, ids, services, value in [
+                ('aa:bb', {manufacturer: b'data'}, [], reading),
+                ('aa:bb', {}, [service], None),
+                ('cc:dd', {}, [service], None),
+                ('ee:ff', {76: b'unrelated'}, [], None),
+            ]:
+                self.callback(
+                    SimpleNamespace(address=address, name=None),
+                    SimpleNamespace(manufacturer_data=ids, service_uuids=services, reading=value),
+                )
+
+        async def stop(self):
+            stopped.append(True)
+
+    monkeypatch.setattr(aranet_alert.aranet4.client, 'BleakScanner', Scanner)
+    monkeypatch.setattr(aranet_alert.aranet4.client, 'Aranet4Advertisement', parse)
+    found = asyncio.run(aranet_alert._scan(0))
+    assert set(found) == {'AA:BB', 'CC:DD'}
+    assert found['AA:BB'].readings is reading
+    assert 'ee:ff' not in parsed
+    assert stopped == [True]
 
 
 def _monitor(**overrides) -> Monitor:

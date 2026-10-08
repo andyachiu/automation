@@ -1,0 +1,16 @@
+[Unit]
+Description=CO2-driven Nest fan timer
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/andychiu/automation/scripts/aranet-alert
+Environment=CO2_HIGH=1000
+EnvironmentFile=/home/andychiu/.config/aranet/fan-alert.env
+Environment=NEST_NOTIFY=1
+Environment=NEST_CREDENTIALS=/home/andychiu/.config/aranet/nest.json
+ExecStart=/home/andychiu/automation/scripts/aranet-alert/.venv/bin/python nest_fan.py --live
+TimeoutStartSec=90
+NoNewPrivileges=true
+StandardOutput=append:/home/andychiu/.local/share/aranet/nest-fan.log
+StandardError=append:/home/andychiu/.local/share/aranet/nest-fan.log

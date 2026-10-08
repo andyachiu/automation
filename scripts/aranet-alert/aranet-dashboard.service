@@ -1,0 +1,20 @@
+[Unit]
+Description=Aranet air-quality dashboard
+After=network-online.target tailscaled.service aranet-alert.service
+Wants=network-online.target
+
+[Service]
+User=andychiu
+WorkingDirectory=/home/andychiu/automation/scripts/aranet-alert
+EnvironmentFile=/etc/aranet-alert.env
+# Set to your private Tailscale address when installing.
+Environment=DASHBOARD_BIND=127.0.0.1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/andychiu/automation/scripts/aranet-alert/.venv/bin/python dashboard.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

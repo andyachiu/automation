@@ -21,8 +21,10 @@ import urllib.request
 from dataclasses import dataclass
 
 import aranet4
+import history
 
-SCAN_SECONDS = 10
+# Short discovery windows missed nearby sensors during Pi commissioning.
+SCAN_SECONDS = 60
 POLL_SECONDS = 60  # fallback when no sensor reports its measurement interval
 SETTLE_SECONDS = 5  # wake just after the sensor's next measurement, not before
 MIN_SLEEP_SECONDS = 30
@@ -148,15 +150,31 @@ def notify(config: Config, title: str, message: str, priority: str = "default") 
 async def _scan(duration: int) -> dict:
     found = {}
 
-    def on_scan(adv):
+    def on_scan(device, advertisement):
+        # Some Aranet broadcasts contain measurements but no service UUIDs.
+        # Filter locally so BlueZ does not discard those advertisements.
+        services = {value.lower() for value in advertisement.service_uuids}
+        aranet_services = {
+            aranet4.client.Aranet4.SERVICE_SAF_TEHNIKA.lower(),
+            aranet4.client.Aranet4.SERVICE_SAF_TEHNIKA_OLD.lower(),
+        }
+        if (
+            aranet4.client.Aranet4.MANUFACTURER_ID
+            not in advertisement.manufacturer_data
+            and not services.intersection(aranet_services)
+        ):
+            return
+        adv = aranet4.client.Aranet4Advertisement(device, advertisement)
         address = adv.device.address.upper()
         if getattr(adv, "readings", None) or address not in found:
             found[address] = adv
 
-    scanner = aranet4.client.Aranet4Scanner(on_scan)
+    scanner = aranet4.client.BleakScanner(detection_callback=on_scan)
     await scanner.start()
-    await asyncio.sleep(duration)
-    await scanner.stop()
+    try:
+        await asyncio.sleep(duration)
+    finally:
+        await scanner.stop()
     return found
 
 
@@ -227,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     started = time.monotonic()
+    history.initialize(config.sensors)
     monitors = {
         address: Monitor(config, name, last_seen=started)
         for address, name in config.sensors.items()
@@ -241,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
         for address, monitor in monitors.items():
             readings = getattr(found.get(address), "readings", None)
             if readings and readings.co2 > 0:
+                history.record(address, readings)
                 log(
                     f"{monitor.name}: CO2 {readings.co2} ppm, battery {readings.battery}%"
                 )

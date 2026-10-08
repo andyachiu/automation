@@ -56,7 +56,34 @@ curl -fsS -H "Title: Test Room: CO2 high" -d "Test alert, please ignore." "https
 
 ## How It Works
 
-1. The watcher scans for the sensors' Bluetooth broadcasts, started by systemd on the Pi or by the Terminal launcher on the Mac. Each broadcast reports the sensor's measurement interval and how long ago it measured, so the watcher sleeps until the next reading is due instead of re-reading the same value. Scanning costs the sensor nothing: it broadcasts whether or not anything listens.
+### Nest fan controller (enabled; Production OAuth verified)
+
+`nest_fan.py` defaults to dry-run; `--live` is required to issue commands. It uses Google's SDM Fan.SetTimer API. No heating/cooling mode or temperature settings are changed. The variants in `systemd-user/` are installed in `~/.config/systemd/user/` on the Pi. The timer is enabled and active, with existing `Linger=yes` allowing operation after logout and at boot. The original system-level templates remain uninstalled; do not enable both.
+
+Policy: at least five minutes of consecutive observations at or above `CO2_HIGH` in one room, latest observation at most ten minutes old, and no gap over ten minutes. These are received observations, not guaranteed distinct sensor samples. Each command requests a 15-minute timer, with at least one hour between requests and at most four attempts in a rolling 24 hours. Existing ON fan timers are preserved. Reservations are recorded before sending; failed or ambiguous commands count toward cooldown and limits to prevent retry loops. Errors exit nonzero.
+
+Credentials must be a mode-600 JSON file containing `client_id`, `client_secret`, `refresh_token`, and `device_name` (`enterprises/PROJECT/devices/DEVICE`), outside the repo. The service expects `/home/andychiu/.config/aranet/nest.json`. Setup requires Google Device Access registration, an SDM-enabled Cloud project and OAuth authorization. Do not reuse the morning briefing's OAuth credentials or persist authorization codes in documentation.
+
+The authorized evaluation will pause the recurring timer, require fresh readings from both rooms, record a 15-minute pre-run baseline, issue one `--test --live` timed command, verify the thermostat reports its timer ON, and observe CO2 during the run and for 15 minutes afterward. Compare per-room observations with timestamps and missing-coverage caveats; a single uncontrolled trial does not establish causality. Resume automatic operation only after confirming the command behavior. The HVAC has no fresh-air intake, so this tests redistribution of indoor CO2, not removal from the home.
+
+On October 7, live timer control was verified: Google reported ON after a bounded test and OFF after its timeout. This verifies API timer control, not independently measured airflow or CO2 removal. One sensor lacked a stable pre-test baseline, so observations do not establish causality. Production OAuth refresh and read-only Fan access passed. The persistent user timer was enabled with a 1000 ppm threshold. Check with `systemctl --user status aranet-nest-fan.timer`; stop with `systemctl --user disable --now aranet-nest-fan.timer`. Logs are at `~/.local/share/aranet/nest-fan.log`; requests are audited in SQLite. Credentials and household-specific deployment details are kept outside the public repository.
+
+### Air-quality dashboard
+
+Configure `DASHBOARD_BIND` with your Pi's private Tailscale address, then open `http://<pi-tailscale-ip>:8080` with Tailscale connected. The checked-in template defaults to localhost; access follows your tailnet's network policy. It has no separate dashboard password. There are no external JavaScript/CDN dependencies.
+
+The watcher stores each received observation in `~/.local/share/aranet/readings.sqlite3` (override with `ARANET_DB`). SQLite WAL allows the dashboard to read while the watcher writes. Records older than 90 days are pruned when observations arrive. History starts at installation; old log lines are not backfilled. Storage failures exit loudly and systemd restarts the watcher.
+
+The 2h/6h/24h/7d chart shows both rooms on the same scale, with the configured alert threshold. Cards show the latest received observation, temperature in Fahrenheit, humidity, pressure, battery, and the selected period's observed peak. Observations may repeat a sensor measurement; timestamps are reception times, not reconstructed measurement times. Gaps exceeding the configured stale interval are disconnected. Missing rooms remain visible; stale readings are labeled. The browser refreshes every minute and reports refresh failures.
+
+```bash
+systemctl status aranet-dashboard
+journalctl -u aranet-dashboard -f
+```
+
+`aranet-dashboard.service` defaults to localhost; adapt the username, paths, and private bind address when installing it. Deploy `history.py`, `dashboard.py`, and `dashboard.html` alongside `aranet_alert.py`, install the unit, restart the watcher, and enable the dashboard. Back up the SQLite database using SQLite's backup API, rather than copying only its main file during writes.
+
+1. The watcher scans for 60 seconds for the sensors' Bluetooth broadcasts, started by systemd on the Pi or by the Terminal launcher on the Mac. It accepts Aranet manufacturer data even without service UUIDs. Each broadcast reports the sensor's measurement interval and how long ago it measured, so the watcher sleeps until the next reading is due instead of re-reading the same value. Scanning costs the sensor nothing: it broadcasts whether or not anything listens.
 2. `aranet_alert.py` tracks each sensor separately and puts its room name in the alert title (for example "Bedroom: CO2 high"). It compares CO2 against two thresholds. It alerts once when CO2 reaches `CO2_HIGH` (1000 ppm, where the Aranet4 display turns amber) and sends an all-clear once it drops below `CO2_CLEAR` (900 ppm). The gap keeps readings near a threshold from flapping.
 3. It also alerts once when the sensor hasn't been seen for `STALE_MINUTES` (15) and when the battery reaches `LOW_BATTERY` (10%).
 4. Alerts are an HTTP POST to your ntfy topic. The ntfy app on your phone and iPad shows them as push notifications.
@@ -75,6 +102,23 @@ curl -fsS -H "Title: Test Room: CO2 high" -d "Test alert, please ignore." "https
 Place the Pi within about 10 m of every sensor, ideally midway between them. Walls cut that range.
 
 ## Raspberry Pi Setup (one-time)
+
+### Current Pi deployment (2026-10-06)
+
+- Raspberry Pi OS / Debian 13, arm64. Project files are deployed as files rather than a Git clone; `git pull` does not update the running installation.
+- The Pi watcher runs under systemd, while the Mac watcher is disabled and the Mac iMessage relay remains active.
+- Private configuration resides in `/etc/aranet-alert.env` with mode 600. Keep sensor addresses, notification topics, network addresses, and SSH fingerprints outside this public repository.
+- Manufacturer-data discovery and a 60-second scan window improve sensor discovery. Validate sustained coverage in final sensor locations.
+- Tailscale and SSH were validated from an iPhone. Resolve the current private address with `tailscale status` and verify host keys through your trusted device setup.
+
+Useful checks on the Pi:
+
+```bash
+cd ~/automation/scripts/aranet-alert
+~/.local/bin/uv run --frozen --no-dev aranet_alert.py --scan
+systemctl status aranet-alert
+tailscale status
+```
 
 ### 1. Sensor and phone
 
@@ -209,11 +253,15 @@ Limits compared with the Pi:
 - **Restarts:** after a reboot, alerts resume only once you log in.
 - **Thresholds:** the launcher doesn't read `/etc/aranet-alert.env`. To change thresholds on the Mac, edit the defaults in `Config`.
 
-When the Pi takes over, stop the Mac watcher, then delete `plists/com.andychiu.automation.aranet-alert.plist.template` so the installer doesn't bring it back:
+When the Pi takes over, persistently disable and stop the Mac watcher. Retain its template for rollback and leave the iMessage relay running:
 
 ```bash
-launchctl unload ~/Library/LaunchAgents/com.andychiu.automation.aranet-alert.plist && pkill -f run_aranet_alert_mac.command
+launchctl disable gui/$(id -u)/com.andychiu.automation.aranet-alert
+launchctl bootout gui/$(id -u)/com.andychiu.automation.aranet-alert
+pkill -TERM -f '^bash .*/aranet-alert/run_aranet_alert_mac.command'
 ```
+
+To roll back, first stop the Pi service, then run `launchctl enable gui/$(id -u)/com.andychiu.automation.aranet-alert` before loading the Mac agent again.
 
 ## Text Alerts (Mac)
 
@@ -252,3 +300,13 @@ uv run pytest
 ```
 
 `--scan` also works on a Mac, but macOS shows CoreBluetooth UUIDs instead of MAC addresses. Use the address `--scan` prints on the Pi itself.
+
+### Fan-run notifications
+
+The deployed user service enables `NEST_NOTIFY=1` and loads the existing ntfy topic from private mode-600 `~/.config/aranet/fan-alert.env`. Each accepted fan command produces one normal-priority notification with its triggering room and 15-minute duration. Routine checks, existing timers, cooldowns, and rejected commands do not send fan-start notifications. Titles do not match the iMessage relay filter, so no extra iMessages are sent. Notification failures exit nonzero after recording the accepted fan command; the reservation still prevents duplicate fan commands. Notification delivery is not automatically retried.
+
+A labeled `--notify-test` was run via the Pi user systemd manager on October 7 and accepted by ntfy without issuing a thermostat command. Server acceptance does not independently confirm phone display. The eight controller/notification behavior tests passed.
+
+### Temperature, pressure, and theme (October 8, 2026)
+
+The dashboard measurement selector charts CO2, temperature (degrees Fahrenheit; stored sensor data remains Celsius), relative humidity (% RH, using a 0–100% chart scale), or sensor pressure (hPa, not sea-level adjusted) for both rooms over 2h/6h/24h/7d. Current pressure appears in each room card. Temperature uses existing recorded history; a non-destructive SQLite migration adds nullable pressure to old rows, and new broadcasts supply pressure. Missing values are not backfilled or connected through null points. The separate top-right light/dark toggle initially follows the system preference and saves an override in this browser. Existing 90-day retention and stale/gap handling apply.
