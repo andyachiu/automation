@@ -105,7 +105,7 @@ Place the Pi within about 10 m of every sensor, ideally midway between them. Wal
 
 ### Current Pi deployment (2026-10-06)
 
-- Raspberry Pi OS / Debian 13, arm64. Project files are deployed as files rather than a Git clone; `git pull` does not update the running installation.
+- Raspberry Pi OS / Debian 13, arm64. `~/automation` is a sparse HTTPS clone of `scripts/aranet-alert` (converted 2026-10-15). Update with `cd ~/automation && git pull --ff-only`, then `uv sync --frozen --no-dev` and restart `aranet-alert` and `aranet-dashboard`. Host-specific unit copies are backed up in `~/.config/aranet/pi-overrides/`; installed units live in `/etc/systemd/system`.
 - The Pi watcher runs under systemd, while the Mac watcher is disabled and the Mac iMessage relay remains active.
 - Private configuration resides in `/etc/aranet-alert.env` with mode 600. Keep sensor addresses, notification topics, network addresses, and SSH fingerprints outside this public repository.
 - Manufacturer-data discovery and a 60-second scan window improve sensor discovery. Validate sustained coverage in final sensor locations.
