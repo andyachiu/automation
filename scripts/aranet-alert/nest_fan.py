@@ -13,28 +13,35 @@ from history import DB_PATH, connect
 DURATION = 900
 COOLDOWN = 3600
 MAX_DAILY_RUNS = 4
+HEALTH_PROBE = 3600
+FAILURE_REMINDER = 21600
+
+def send_ntfy(title, message, priority='default'):
+    topic = os.environ.get('NTFY_TOPIC', '')
+    if not topic:
+        raise RuntimeError('Fan notification requires NTFY_TOPIC')
+    request = urllib.request.Request(
+        os.environ.get('NTFY_SERVER', 'https://ntfy.sh').rstrip('/') + '/' + topic,
+        data=message.encode(), headers={'Title': title, 'Priority': priority})
+    with urllib.request.urlopen(request, timeout=15):
+        pass
 
 def notify_fan(reason, test=False):
     if os.environ.get('NEST_NOTIFY') != '1':
         return
-    topic = os.environ.get('NTFY_TOPIC', '')
-    if not topic:
-        raise RuntimeError('Fan notification requires NTFY_TOPIC')
     title = 'CasaPi fan alert test' if test else 'CasaPi fan timer accepted'
     message = ('Notification delivery test; no fan command was sent.' if test else
                f'Google accepted a {DURATION // 60}-minute fan timer. Trigger: {reason}.')
-    request = urllib.request.Request(
-        os.environ.get('NTFY_SERVER', 'https://ntfy.sh').rstrip('/') + '/' + topic,
-        data=message.encode(), headers={'Title': title, 'Priority': 'default'})
     try:
-        with urllib.request.urlopen(request, timeout=15):
-            pass
+        send_ntfy(title, message)
     except Exception:
         raise RuntimeError('Fan notification delivery failed; fan reservation remains in place.') from None
 
 def initialize(path=DB_PATH):
     with connect(path) as db:
         db.execute('CREATE TABLE IF NOT EXISTS fan_runs (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, duration INTEGER NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS fan_health (id INTEGER PRIMARY KEY CHECK (id=1), last_ok INTEGER, failing_since INTEGER, last_alert INTEGER)')
+        db.execute('INSERT OR IGNORE INTO fan_health(id) VALUES (1)')
 
 def qualifying_room(db, now, threshold=1000):
     # At least five minutes of consecutive high observations, with no gaps
@@ -92,11 +99,14 @@ def tick(credentials, path=DB_PATH, test=False, live=False, now=None):
             rows=db.execute('SELECT rooms.address,MAX(readings.ts) AS latest FROM rooms LEFT JOIN readings USING(address) GROUP BY rooms.address').fetchall()
             if not rows or any(r['latest'] is None or now-r['latest']>600 for r in rows):
                 raise RuntimeError('Test requires fresh readings from every room.')
-    if not reason: return 'No sustained high CO2'
+    # Hourly read-only probe so lost API access surfaces before CO2 rises.
+    if not reason and (not live or not probe_due(path,now)): return 'No sustained high CO2'
     if not live: return 'Dry run: '+reason
     token,device=token_from_file(credentials)
     url='https://smartdevicemanagement.googleapis.com/v1/'+device
     state=request_json(url,token=token)
+    with connect(path) as db: db.execute('UPDATE fan_health SET last_ok=? WHERE id=1',(now,))
+    if not reason: return 'Nest API reachable; no sustained high CO2'
     fan=state.get('traits',{}).get('sdm.devices.traits.Fan')
     if not fan: raise RuntimeError('Selected thermostat does not expose fan control')
     if fan.get('timerMode')=='ON': return 'Existing fan timer left unchanged'
@@ -113,6 +123,46 @@ def tick(credentials, path=DB_PATH, test=False, live=False, now=None):
     # Unknown outcomes are not automatically retried; the reservation persists.
     return 'Fan timer accepted for 15 minutes'
 
+def probe_due(path, now):
+    with connect(path) as db:
+        last_ok=db.execute('SELECT last_ok FROM fan_health WHERE id=1').fetchone()[0]
+    return last_ok is None or now-last_ok>=HEALTH_PROBE
+
+def stamp(now):
+    return time.strftime('%Y-%m-%d %H:%M', time.localtime(now))
+
+def report_failure(path, now, exc):
+    initialize(path)
+    with connect(path) as db:
+        since,alerted=db.execute('SELECT failing_since,last_alert FROM fan_health WHERE id=1').fetchone()
+        since=now if since is None else since
+        db.execute('UPDATE fan_health SET failing_since=? WHERE id=1',(since,))
+    if os.environ.get('NEST_NOTIFY')!='1' or (alerted is not None and now-alerted<FAILURE_REMINDER): return
+    try:
+        send_ntfy('CasaPi fan: control failing',f'Fan automation failing since {stamp(since)}: {str(exc)[:200]}','high')
+    except Exception:
+        print(f'[{stamp(now)}] Failure alert delivery failed')
+        return
+    with connect(path) as db: db.execute('UPDATE fan_health SET last_alert=? WHERE id=1',(now,))
+
+def report_recovery(path, now):
+    with connect(path) as db:
+        since,alerted=db.execute('SELECT failing_since,last_alert FROM fan_health WHERE id=1').fetchone()
+        if since is None: return
+        db.execute('UPDATE fan_health SET failing_since=NULL,last_alert=NULL WHERE id=1')
+    if alerted is not None and os.environ.get('NEST_NOTIFY')=='1':
+        send_ntfy('CasaPi fan: control restored',f'Fan automation working again after failing since {stamp(since)}.')
+
+def run(credentials, path=DB_PATH, test=False, live=False, now=None):
+    now=int(time.time() if now is None else now)
+    try:
+        result=tick(credentials,path,test=test,live=live,now=now)
+    except Exception as exc:
+        if live: report_failure(path,now,exc)
+        raise
+    if live: report_recovery(path,now)
+    return f'[{stamp(now)}] {result}'
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--credentials',default=os.environ.get('NEST_CREDENTIALS',''))
@@ -126,4 +176,4 @@ if __name__=='__main__':
         notify_fan('', test=True)
         print('Fan notification test accepted by ntfy; no fan command sent')
     else:
-        print(tick(args.credentials,test=args.test,live=args.live))
+        print(run(args.credentials,test=args.test,live=args.live))

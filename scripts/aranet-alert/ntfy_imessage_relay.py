@@ -2,7 +2,7 @@
 """
 ntfy_imessage_relay.py — Text the CO2 alerts that aranet_alert.py pushes.
 
-Subscribes to the ntfy topic and sends an iMessage for every "CO2 high" alert,
+Subscribes to the ntfy topic and sends an iMessage for every "CO2 high" and fan-control alert,
 so texts stay in sync with the push notifications whether the watcher runs on
 this Mac or on the Pi. iMessage needs Messages, so this always runs on the Mac.
 
@@ -27,7 +27,7 @@ from shared.briefing_common import send_imessage  # noqa: E402
 
 MAX_MESSAGE_CHARS = 1200
 READ_TIMEOUT = 120  # ntfy sends a keepalive roughly every 45 seconds
-ALERT_SUFFIX = ": CO2 high"
+ALERT_SUFFIXES = (": CO2 high", ": control failing", ": control restored")
 
 log = logging.getLogger("aranet_relay")
 
@@ -42,7 +42,7 @@ def load_targets(env: dict[str, str] = os.environ) -> list[str]:
 
 def should_text(event: dict) -> bool:
     return event.get("event") == "message" and str(event.get("title", "")).endswith(
-        ALERT_SUFFIX
+        ALERT_SUFFIXES
     )
 
 

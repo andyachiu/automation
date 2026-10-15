@@ -89,3 +89,34 @@ def test_ntfy_payload_is_not_an_imessage_alert(monkeypatch):
     req=requests[0]
     assert b'15-minute' in req.data and b'Room' in req.data
     assert not should_text({'event':'message','title':req.get_header('Title')})
+
+def test_probe_runs_hourly_without_high_co2(tmp_path,monkeypatch):
+    import nest_fan
+    p=setup(tmp_path,[])
+    monkeypatch.setattr(nest_fan,'token_from_file',lambda p:('token','enterprises/p/devices/d'))
+    calls=[]
+    monkeypatch.setattr(nest_fan,'request_json',lambda url,payload=None,**kw:calls.append(payload) or {})
+    assert tick('unused',p,live=True,now=10000)=='Nest API reachable; no sustained high CO2'
+    assert tick('unused',p,live=True,now=10060)=='No sustained high CO2'
+    assert tick('unused',p,live=True,now=13600)=='Nest API reachable; no sustained high CO2'
+    assert calls==[None,None]
+
+def test_failure_alerts_are_throttled_and_recovery_is_reported(tmp_path,monkeypatch):
+    import nest_fan
+    import pytest
+    from ntfy_imessage_relay import should_text
+    p=setup(tmp_path,[])
+    monkeypatch.setenv('NEST_NOTIFY','1')
+    monkeypatch.setattr(nest_fan,'token_from_file',lambda p:('token','enterprises/p/devices/d'))
+    sent=[]
+    monkeypatch.setattr(nest_fan,'send_ntfy',lambda title,message,priority='default':sent.append(title))
+    def down(url,payload=None,**kw):raise RuntimeError('Nest API request failed (HTTP 404)')
+    monkeypatch.setattr(nest_fan,'request_json',down)
+    for now in [10000,10060,10000+nest_fan.FAILURE_REMINDER]:
+        with pytest.raises(RuntimeError):nest_fan.run('unused',p,live=True,now=now)
+    assert sent==['CasaPi fan: control failing']*2
+    monkeypatch.setattr(nest_fan,'request_json',lambda url,payload=None,**kw:{})
+    nest_fan.run('unused',p,live=True,now=40000)
+    nest_fan.run('unused',p,live=True,now=50000)
+    assert sent[-1]=='CasaPi fan: control restored' and len(sent)==3
+    assert all(should_text({'event':'message','title':t}) for t in sent)
