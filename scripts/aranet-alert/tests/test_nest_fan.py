@@ -23,8 +23,8 @@ def test_reservation_survives_failure_and_limits_daily_runtime(tmp_path):
     p=setup(tmp_path,[])
     assert reserve_run(p,10000,'test')
     assert reserve_run(p,10001,'test') is None
-    for now in [13600,17200,20800]:assert reserve_run(p,now,'test')
-    assert reserve_run(p,24400,'test') is None
+    for now in range(13600,10000+3600*10,3600):assert reserve_run(p,now,'test')
+    assert reserve_run(p,10000+3600*10,'test') is None
 
 def test_dry_run_never_needs_credentials(tmp_path):
     p=setup(tmp_path,[(1000,1100),(1300,1100)])
